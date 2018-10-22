@@ -9,10 +9,10 @@
 #include <stdexcept>
 #include <gmpxx.h>
 #include <iostream>
+#include <array>
+#include <boost/algorithm/string.hpp>
 using namespace std;
 
-#define MODULUS 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-#define HALFMODULUS = ((MODULUS + 1)/2)
 #define COST_SCALAR_MUL 5
 #define COST_SCALAR_NEG 2
 #define COST_SCALAR_COPY 1
@@ -23,6 +23,7 @@ vector<struct mul> mul_data;
 
 int mul_count = 0;
 int temp_count = 0;
+mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141_mpz;
 
 
 class Vars {
@@ -127,9 +128,11 @@ struct multiplication {
 	Linear o;
 };
 
-mpz_class modinv(mpz_class n) {
-	
-	return 5;//(int)pow(n, MODULUS-2);
+mpz_class modinv(mpz_class x) {
+	mpz_t ret;
+	mpz_class n = mod - 2;
+	mpz_powm(ret, x.get_mpz_t(), n.get_mpz_t(), mod.get_mpz_t());
+	return mpz_class(ret);
 }
 
 void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no)
@@ -189,6 +192,7 @@ Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
 	return ret;
 }
 
+// mutates l and/or r
 Linear new_division(Linear& l, Linear& r) {
 	if (r.is_const) {
 		l.div(r.val);
@@ -203,6 +207,81 @@ Linear new_division(Linear& l, Linear& r) {
 	eqs.push_back(l);
 	eqs.push_back(r);
 	return ret;
+}
+
+Linear new_xor(Linear& l, Linear& r) {
+	Linear lv = Linear();
+	Linear rv = Linear();
+	Linear mul = Linear();
+	new_multiplication(l, r);
+	l.add(r);
+	mul.mul(2);
+	l.sub(mul);
+	return l;
+}
+
+string clean_expr(string s) {
+	// TODO: strip s
+	if (s == "" || s[0] != '(' || s.back() == ')')
+		return s;
+	int depth = 1;
+	for (int i = 1; i < s.length()-1; i++) {
+		if (s[i] == '(') {
+			depth += 1;
+		} else if (s[i] == ')') {
+			depth -= 1;
+			if (depth == 0)
+				return s;
+		}
+	}
+	return clean_expr(s.substr(1, s.length()-2));
+}
+
+struct expr {
+	string l;
+	string op;
+	string r;
+};
+
+bool expr split_expr_binary(string& s, vector<string> ops, struct expr& result) {
+	//int i = 1;
+	int depth = 0;
+	for (int i = s.length(); i > 1; i--) {
+		if (s[i-1] == ')')
+			depth += 1;
+		else if (s[i-1] == '(')
+			depth -= 1;
+		else if (depth == 0){
+			for (const string& op: ops) {
+				if (i-op.length() >= 1 && s.substr(i-op.length(), op.length()) == op) {
+					result.l = clean_expr(s.substr(0, i-op.length()));
+					result.r = clean_expr(s.substr(i));
+					result.op = op;
+					return true;			
+				}
+			}
+		}
+	}
+	return false;
+}
+
+void parse_statement(string& s) {
+	//TODO: strip s
+	if (s.length() > 6 && s.substr(0,6) == "debug "){
+		throw invalid_argument("TODO: implement debug");
+	}
+	vector<string> assn_ops = {":=", "=:", "==", "="};
+	struct expr sp;
+	bool match = split_expr_binary(s, assn_ops, sp);
+	if (match) {
+		string left = sp.l;
+		string op = sp.op;
+		string right = sp.r;
+		if (op == ":=") {
+			tokenizer tok{left};
+			vector<string> bits = 
+		}
+	}
 }
 
 
