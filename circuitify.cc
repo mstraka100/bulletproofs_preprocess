@@ -10,7 +10,9 @@
 #include <gmpxx.h>
 #include <iostream>
 #include <array>
+#include <regex>
 #include <boost/algorithm/string.hpp>
+#include <boost/tokenizer.hpp>
 using namespace std;
 
 #define COST_SCALAR_MUL 5
@@ -20,11 +22,16 @@ using namespace std;
 typedef tuple<char, int> var_tuple;
 
 vector<struct mul> mul_data;
+map<string, Linear> varset;
 
 int mul_count = 0;
 int temp_count = 0;
+int bit_count = 0;
 mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141_mpz;
 
+regex var_re = regex('[A-Za-z_][0-9a-zA-Z_]*');
+regex secret_re = regex('#(-?[0-9]+)');
+regex num_re = regex('[0-9]+');
 
 class Vars {
 public:
@@ -243,7 +250,7 @@ struct expr {
 	string r;
 };
 
-bool expr split_expr_binary(string& s, vector<string> ops, struct expr& result) {
+bool split_expr_binary(string& s, vector<string> ops, struct expr& result) {
 	//int i = 1;
 	int depth = 0;
 	for (int i = s.length(); i > 1; i--) {
@@ -265,6 +272,83 @@ bool expr split_expr_binary(string& s, vector<string> ops, struct expr& result) 
 	return false;
 }
 
+
+Linear parse_expression(string s) {
+	s = clean_expr(s);
+	bool split;
+	if (s == "")
+		throw invalid_argument("Empty expresion");
+	struct expr sp;
+	vector<string> delim = {"^"}
+	split = split_expr_binary(s, delim, sp);
+	if (split) {
+		Linear left = parse_expression(sp.l);
+		Linear right = parse_expression(sp.r);
+		Linear ret = new_xor(left, right)
+		// TODO: assert result correct
+		return ret;
+	}
+	delim = {"+", "-"};
+	split = split_expr_binary(s, delim, sp);
+	if (split) {
+		Linear left = parse_expression(sp.l);
+		Linear right = parse_expression(sp.r);
+		if (sp.op == "+")
+			sp.l.add(sp.r);
+		else
+			sp.l.sub(sp.r)
+		return sp.l;
+	}
+	delim = {"*", "/"};
+	split = split_expr_binary(s, delim, sp);
+	if (split) {
+		Linear left = parse_expression(sp.l);
+		Linear right = parse_expression(sp.r);
+		if (op == "*") {
+			Linear ret = new_multiplication(left, right);
+			return ret;
+		} else {
+			Linear ret = new_division(left, right);
+			return ret;
+		}
+	}
+	if (s.length() > 5 && s.substr(0,5) == "bool(") {
+		Linear ret = parse_expression(s.substr(4));
+		Linear tmp = ret;
+		Linear tmp2 = ret;
+		Linear one;
+		new_const(1, one);
+		temp2.sub(one);
+		new_multiplication(tmp, tmp2, false);
+		bit_count += 1;
+		return ret;
+	}
+	if (s[0] == '-') {
+		Linear ret = parse_expression(s.substr(1))
+		ret.mul(mod-1);
+	}
+	if (regex_match(s, var_re)) {
+		if (varset.count(s) != 0)
+			return varset[s];
+		else
+			throw invalid_argument("Variable not defined");
+	}
+	
+}
+
+/*void parse_expressions(string s) {
+	sruct expr sp;
+	vector<string> delim = {","};
+	bool split = split_expr_binary(s, delim);
+	if (split) {
+		return parse_expressions
+	}
+}*/
+
+
+//void split_by_delimiter(constconst string delim, )
+
+typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
 void parse_statement(string& s) {
 	//TODO: strip s
 	if (s.length() > 6 && s.substr(0,6) == "debug "){
@@ -278,9 +362,15 @@ void parse_statement(string& s) {
 		string op = sp.op;
 		string right = sp.r;
 		if (op == ":=") {
-			tokenizer tok{left};
-			vector<string> bits = 
+			//TODO: Abstract out splitting string
+			boost::char_separator<char> sep{","};
+  			tokenizer tok{left, sep};
+			vector<string> bits;
+			for (const auto &b : tok)
+				bits.push_back(b);
 		}
+		//TODO: Check bit names are valid
+		// val = parse_expression(right)
 	}
 }
 
