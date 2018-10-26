@@ -1,5 +1,7 @@
 #include <stdio.h>
+#include <iostream>
 #include <assert.h>
+#include <chrono>
 #include <math.h>
 #include <gmp.h>
 #include <vector>
@@ -273,10 +275,10 @@ Linear new_xor(Linear& l, Linear& r) {
 }
 
 string clean_expr(string s) {
-	// TODO: strip s
 	boost::algorithm::trim(s);
-	if (s == "" || s[0] != '(' || s.back() == ')')
+	if (s == "" || s[0] != '(' || s.back() != ')') {
 		return s;
+	}
 	int depth = 1;
 	for (int i = 1; i < s.length()-1; i++) {
 		if (s[i] == '(') {
@@ -319,7 +321,6 @@ bool split_expr_binary(string& s, vector<string> ops, struct expr& result) {
 }
 
 Linear parse_expression(string s) {
-	cout << s << endl;
 	s = clean_expr(s);
 	bool split;
 	if (s == "")
@@ -381,15 +382,13 @@ Linear parse_expression(string s) {
 	}
 	if (regex_match(s, secret_re)) {
 		Linear ret;
-		int val = stoi(s.substr(1));
-		mpz_class mpz_val = val;
+		mpz_class mpz_val = mpz_class(s.substr(1));
 		new_temp(mpz_val, ret);
 		return ret;
 	}
 	if (regex_match(s, num_re)) {
 		Linear ret;
-		int val = stoi(s);
-		mpz_class mpz_val = val;
+		mpz_class mpz_val = mpz_class(s);
 		new_const(mpz_val, ret);
 		return ret;
 	}
@@ -567,10 +566,17 @@ int main() {
   cout << n;
   printf("\n");*/
 
-	vector<string> input = {"v1 = #2", "v2 = #5", "v3 = v1 * v2", "v4 = v3 * v3"};
+/*	vector<string> input = {"v1 = #2", "v2 = #5", "v3 = v1 * v2", "v4 = v3 * v3"};
 
 	for (int i = 0; i < input.size(); i++)
-		parse_statement(input[i]);
+		parse_statement(input[i]);*/
+
+//	cout << clean_expr("(#0)") << endl;
+	string input_line;
+	while (cin) {
+		getline(cin, input_line);
+		parse_statement(input_line);
+	}
 
 	//printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
 	
@@ -579,7 +585,12 @@ int main() {
 		eqs[i].to_str();
 	} */
 
+	auto start = chrono::high_resolution_clock::now();
 	eliminate_temps();
+	auto finish = chrono::high_resolution_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	cout << "Time to eliminate vars: " << elapsed.count() << endl;
+
 
 	printf("did it!");
 
