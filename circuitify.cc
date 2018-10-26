@@ -105,6 +105,11 @@ public:
 			var_map[x.first] /= v;
 		}
 	}
+
+	void to_str() {
+		for (std::map<int,mpz_class>::iterator it=var_map.begin(); it!=var_map.end(); ++it)
+    		std::cout << it->first << " => " << it->second << '\n';
+	}
 };
 
 class Linear {
@@ -153,6 +158,10 @@ class Linear {
 		val /= v;
 		vars.div(v);
 	}
+
+	void to_str() {
+		vars.to_str();
+	}
 };
 
 vector<Linear> eqs;
@@ -172,6 +181,7 @@ struct multiplication {
 
 mpz_class modinv(mpz_class x) {
 	mpz_t ret;
+	mpz_init(ret);
 	mpz_class n = mod - 2;
 	mpz_powm(ret, x.get_mpz_t(), n.get_mpz_t(), mod.get_mpz_t());
 	return mpz_class(ret);
@@ -264,6 +274,7 @@ Linear new_xor(Linear& l, Linear& r) {
 
 string clean_expr(string s) {
 	// TODO: strip s
+	boost::algorithm::trim(s);
 	if (s == "" || s[0] != '(' || s.back() == ')')
 		return s;
 	int depth = 1;
@@ -308,6 +319,7 @@ bool split_expr_binary(string& s, vector<string> ops, struct expr& result) {
 }
 
 Linear parse_expression(string s) {
+	cout << s << endl;
 	s = clean_expr(s);
 	bool split;
 	if (s == "")
@@ -503,7 +515,7 @@ void parse_statement(string& s) {
 }
 
 
-void pivot_variable(vector<Linear>& eqs, char type, int idx, bool eliminate = false) {
+void pivot_variable(char type, int idx, bool eliminate = false) {
 	int c = 0;
 	int cc = 0;
 	int low = -1;
@@ -517,7 +529,9 @@ void pivot_variable(vector<Linear>& eqs, char type, int idx, bool eliminate = fa
 				low = i;
 				c = eqs[i].num_vars();
 				Linear tmp = eqs[i];
-				tmp.mul(modinv(eqs[i].get_var(type, idx)));
+				mpz_class v = eqs[i].get_var(type, idx);
+				mpz_class inv = modinv(v);
+				tmp.mul(inv);
 				leq = eqs[i];
 				break;
 			}
@@ -537,6 +551,12 @@ void pivot_variable(vector<Linear>& eqs, char type, int idx, bool eliminate = fa
 	}
 }
 
+void eliminate_temps() {
+	for (int i = 0; i < temp_count; i++) {
+		pivot_variable('T', i, true);
+	}
+}
+
 
 int main() {
 //  printf("%d\n", modinv(5));
@@ -547,6 +567,21 @@ int main() {
   cout << n;
   printf("\n");*/
 
+	vector<string> input = {"v1 = #2", "v2 = #5", "v3 = v1 * v2", "v4 = v3 * v3"};
 
-  return 0;
+	for (int i = 0; i < input.size(); i++)
+		parse_statement(input[i]);
+
+	//printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
+	
+	printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
+/*	for (int i = 0; i < eqs.size(); i++) {
+		eqs[i].to_str();
+	} */
+
+	eliminate_temps();
+
+	printf("did it!");
+
+ 	return 0;
 }
