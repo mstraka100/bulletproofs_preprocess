@@ -51,6 +51,24 @@ private:
 			throw invalid_argument("Invalid variable type");
 	}
 
+	char var_type(int x) {
+		int offset = x % 4;
+		if (offset == 0)
+			return 'L';
+		else if (offset == 1)
+			return 'R';
+		else if (offset == 2)
+			return 'O';
+		else if (offset == 3)
+			return 'T';
+		else
+			throw invalid_argument("Modular arithmetic is broken");
+	}
+
+	int var_idx(int x) {
+		return x / 4;
+	}
+
 public:
 	map<int, mpz_class> var_map;
 
@@ -70,6 +88,18 @@ public:
 		int s = var_offset(type);
 		int key = 4*idx + s;
 		return var_map[key];
+	}
+
+	void index_temp_vars(map<int, vector<int>>& index, int pos) {
+		for (auto const&x : var_map) {
+			if (var_type(x.first) == 'T') {
+				int idx = var_idx(x.first);
+				if (index.count(idx) == 0)
+					index[idx] = {pos};
+				else 
+					index[idx].push_back(pos);
+			}
+		}
 	}
 
 	int num_vars() {
@@ -163,6 +193,10 @@ class Linear {
 	void div(mpz_class v) {
 		val /= v;
 		vars.div(v);
+	}
+
+	void index_temp_vars(map<int, vector<int>>& index, int pos) {
+		vars.index_temp_vars(index, pos);
 	}
 
 	void to_str() {
@@ -377,6 +411,7 @@ Linear parse_expression(string s) {
 	if (s[0] == '-') {
 		Linear ret = parse_expression(s.substr(1));
 		ret.mul(mod-1);
+		return ret;
 	}
 	if (regex_match(s, var_re)) {
 		if (varset.count(s) != 0) {
@@ -431,7 +466,8 @@ typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
 void parse_statement(string& s) {
 	//TODO: strip s
 	if (s.length() > 6 && s.substr(0,6) == "debug "){
-		throw invalid_argument("TODO: implement debug");
+		return;
+		//throw invalid_argument("TODO: implement debug");
 	}
 	vector<string> assn_ops = {":=", "=:", "==", "="};
 	struct expr sp;
@@ -520,6 +556,43 @@ void parse_statement(string& s) {
 }
 
 
+void pivot_variable_temp(char type, int idx, map<int, vector<int>> index, bool eliminate = false) {
+	int c = 0;
+	int cc = 0;
+	int low = -1;
+	Linear leq;
+	vector<int> vec;
+	vector<int> temp_eqs = index[idx];
+	for (int i = 0; i < temp_eqs.size(); i++) {
+		if (true) {//temp_eqs[i].has_var(type, idx)) {
+			vec.push_back(i);
+			cc += 1;
+			if (low == -1 || c > eqs[i].num_vars()) {
+				low = i;
+				c = eqs[i].num_vars();
+				Linear tmp = eqs[i];
+				mpz_class v = eqs[i].get_var(type, idx);
+				mpz_class inv = modinv(v);
+				tmp.mul(inv);
+				leq = eqs[i];
+				break;
+			}
+		}
+	}
+	if (cc > 1) {
+		for (auto i: vec) {
+			if (i != low) {
+				Linear tmp = leq;
+				tmp.mul(eqs[i].get_var(type, idx));
+				eqs[i].sub(tmp);
+			}
+		}
+	}
+	if (eliminate and cc > 0) {
+		eqs.erase(eqs.begin()+low);
+	}
+}
+
 void pivot_variable(char type, int idx, bool eliminate = false) {
 	int c = 0;
 	int cc = 0;
@@ -556,8 +629,19 @@ void pivot_variable(char type, int idx, bool eliminate = false) {
 	}
 }
 
+map<int, vector<int>> index_temp_vars() {
+	map<int, vector<int>> temp_index;
+	for (int i = 0; i < eqs.size(); i++) {
+		eqs[i].index_temp_vars(temp_index, i);
+	}
+	return temp_index;
+}
+
 void eliminate_temps() {
+	map<int, vector<int>> index = index_temp_vars();
 	for (int i = 0; i < temp_count; i++) {
+		if (i % 250 == 0)
+			cout << "temp_eliminated: " << i << "/" << temp_count << endl;
 		pivot_variable('T', i, true);
 	}
 }
@@ -646,6 +730,16 @@ int main() {
 		cout << "input line: " << input_line << endl;
 		parse_statement(input_line);
 	}
+
+	map<int, vector<int>> index = index_temp_vars();
+	for (auto& x : index) {
+		cout << x.first << " : ";
+		for (auto& y : x.second) {
+			cout << y;
+		}
+		cout << endl;
+	}
+	print_andytoshi_format();
 
 	//printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
 	
