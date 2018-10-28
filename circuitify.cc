@@ -556,7 +556,7 @@ void parse_statement(string& s) {
 }
 
 
-void pivot_variable_temp(char type, int idx, map<int, vector<int>> index, bool eliminate = false) {
+void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vector<int>& to_eliminate, bool eliminate = false) {
 	int c = 0;
 	int cc = 0;
 	int low = -1;
@@ -565,16 +565,17 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>> index, bool e
 	vector<int> temp_eqs = index[idx];
 	for (int i = 0; i < temp_eqs.size(); i++) {
 		if (true) {//temp_eqs[i].has_var(type, idx)) {
-			vec.push_back(i);
+			Linear &lin = eqs[temp_eqs[i]];
+			vec.push_back(temp_eqs[i]);
 			cc += 1;
-			if (low == -1 || c > eqs[i].num_vars()) {
-				low = i;
-				c = eqs[i].num_vars();
-				Linear tmp = eqs[i];
-				mpz_class v = eqs[i].get_var(type, idx);
+			if (low == -1 || c > lin.num_vars()) {
+				low = temp_eqs[i];
+				c = lin.num_vars();
+				Linear tmp = lin;
+				mpz_class v = lin.get_var(type, idx);
 				mpz_class inv = modinv(v);
 				tmp.mul(inv);
-				leq = eqs[i];
+				leq = lin;
 				break;
 			}
 		}
@@ -589,7 +590,8 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>> index, bool e
 		}
 	}
 	if (eliminate and cc > 0) {
-		eqs.erase(eqs.begin()+low);
+		to_eliminate.push_back(low);
+		//eqs.erase(eqs.begin()+low);
 	}
 }
 
@@ -638,12 +640,24 @@ map<int, vector<int>> index_temp_vars() {
 }
 
 void eliminate_temps() {
+	auto start = chrono::high_resolution_clock::now();
 	map<int, vector<int>> index = index_temp_vars();
+	auto finish = chrono::high_resolution_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	cout << "Time to index temp vars: " << elapsed.count() << endl;
+	
+	vector<int> to_eliminate;
 	for (int i = 0; i < temp_count; i++) {
 		if (i % 250 == 0)
 			cout << "temp_eliminated: " << i << "/" << temp_count << endl;
-		pivot_variable('T', i, true);
+		pivot_variable_temp('T', i, index, to_eliminate, true);
+		//pivot_variable('T', i, true);
 	}
+/*	cout << "to be eliminated: " << endl;
+	for (int x : to_eliminate) {
+		cout << x << endl;
+		//eqs.erase(eqs.begin()+low);
+	}*/
 }
 
 void print_var(int x) {
@@ -731,15 +745,15 @@ int main() {
 		parse_statement(input_line);
 	}
 
-	map<int, vector<int>> index = index_temp_vars();
+/*	map<int, vector<int>> index = index_temp_vars();
 	for (auto& x : index) {
 		cout << x.first << " : ";
 		for (auto& y : x.second) {
 			cout << y;
 		}
 		cout << endl;
-	}
-	print_andytoshi_format();
+	}*/
+//	print_andytoshi_format();
 
 	//printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
 	
