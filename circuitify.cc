@@ -57,7 +57,7 @@ public:
 
 	void add_var(char type, int idx, int val) {
 		int s = var_offset(type);
-		var_map[4*idx + s] = val;
+		var_map[4*idx + s] = val % mod;
 	}
 
 	bool has_var(char type, int idx) {
@@ -79,9 +79,9 @@ public:
 	void add(Vars& other) {
 		for (auto const&x : other.var_map) {
 			if (var_map.find(x.first) == var_map.end()) {
-				var_map[x.first] = x.second;
+				var_map[x.first] = x.second % mod;
 			} else {
-				var_map[x.first] += x.second;
+				var_map[x.first] = (var_map[x.first] + x.second) % mod;
 			}
 		}
 	}
@@ -89,22 +89,22 @@ public:
 	void sub(Vars& other) {
 		for (auto const&x : other.var_map) {
 			if (var_map.find(x.first) == var_map.end()) {
-				var_map[x.first] = x.second;
+				var_map[x.first] = (mod - x.second) % mod;
 			} else {
-				var_map[x.first] -= x.second;
+				var_map[x.first] = (var_map[x.first] - x.second + mod) % mod;
 			}
 		}
 	}
 
 	void mul(mpz_class v) {
 		for (auto const&x : var_map) {
-			var_map[x.first] *= v;
+			var_map[x.first] = (var_map[x.first] * v) % mod;
 		}
 	}
 
 	void div(mpz_class v) {
 		for (auto const&x : var_map) {
-			var_map[x.first] /= v;
+			var_map[x.first] = (var_map[x.first] / v) % mod;
 		}
 	}
 
@@ -143,11 +143,15 @@ class Linear {
 
 	void add(Linear& other) {
 		val += other.val;
+		if (!other.is_const)
+			is_const = false;
 		vars.add(other.vars);
 	}
 
 	void sub(Linear& other) {
 		val -= other.val;
+		if (!other.is_const)
+			is_const = false;
 		vars.sub(other.vars);
 	}
 
@@ -191,7 +195,7 @@ mpz_class modinv(mpz_class x) {
 
 void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no)
 {
-	mpz_class o = l*r;
+	mpz_class o = (l*r) % mod;
 	struct mul m = {l, r, o};
 	mul_data.push_back(m);
 	nl.val = l;
@@ -209,7 +213,7 @@ void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no)
 void new_temp(mpz_class v, Linear& nt) {
 	nt.val = v;
 	nt.is_const = false;
-	nt.add_var('T', mul_count, 1);
+	nt.add_var('T', temp_count, 1);
 	temp_count += 1;
 }
 
@@ -375,8 +379,9 @@ Linear parse_expression(string s) {
 		ret.mul(mod-1);
 	}
 	if (regex_match(s, var_re)) {
-		if (varset.count(s) != 0)
+		if (varset.count(s) != 0) {
 			return varset[s];
+		}
 		else
 			throw invalid_argument("Variable not defined");
 	}
@@ -441,8 +446,9 @@ void parse_statement(string& s) {
 			//TODO: Abstract out splitting string
 			boost::char_separator<char> sep{","};
   			tokenizer tok{left, sep};
-			for (const auto &b : tok)
+			for (const auto &b : tok) {
 				bits.push_back(b);
+			}
 			//TODO: Check bit names are valid
 			Linear val = parse_expression(right);
 			//TODO: assert bits length <= 256
@@ -556,6 +562,69 @@ void eliminate_temps() {
 	}
 }
 
+void print_var(int x) {
+	int type = x % 4;
+	int val = x / 4;
+	if (type == 0) 
+		cout << "L";
+	else if (type == 1)
+		cout << "R";
+	else if (type == 2)
+		cout << "O";
+	else if (type == 3)
+		cout << "T";
+	cout << val;
+}
+
+
+		/*if (type == 'L')
+			return 0;
+		else if (type == 'R') 
+			return 1;
+		else if (type == 'O')
+			return 2;
+		else if (type == 'T')
+			return 3;*/
+
+void print_andytoshi_format() {
+	printf("%d,0,%d,%lu; ", mul_count, bit_count, eqs.size());
+	for (int i = 0; i < eqs.size(); i++) {
+		int pos = 0;
+		for (auto e: eqs[i].vars.var_map) {
+		//	cout << "printing pos: " << pos << endl;
+
+			int key = e.first;
+			mpz_class val = e.second % mod;
+		//	cout << endl << "printing val: " << val << endl;
+
+			bool negative = false;
+			if (val*2 > mod) {
+				negative = true;
+				val = mod - val;
+			}
+			if (pos == 0 && negative)
+				cout << "-";
+			else if (pos > 0 && negative)
+				cout << " - ";
+			else if (pos > 0) 
+				cout << " + ";
+			if (val > 1)
+				cout << val << "*";
+		//	cout << "printing i: " << i << endl;
+			print_var(key);
+			pos += 1;
+		}
+		cout << " = ";
+		mpz_class val = (mod - eqs[i].val) % mod;
+		if (val * 2 > mod) {
+			cout << "-";
+			val = mod - val;
+		}
+		cout << val << "; ";
+	}
+	cout << endl;
+}
+
 
 int main() {
 //  printf("%d\n", modinv(5));
@@ -573,14 +642,14 @@ int main() {
 
 //	cout << clean_expr("(#0)") << endl;
 	string input_line;
-	while (cin) {
-		getline(cin, input_line);
+	while (getline(cin, input_line)) {
+		cout << "input line: " << input_line << endl;
 		parse_statement(input_line);
 	}
 
 	//printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
 	
-	printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
+	printf("%d multiplications, %d temporaries, %lu constraints\n", mul_count, temp_count, eqs.size());
 /*	for (int i = 0; i < eqs.size(); i++) {
 		eqs[i].to_str();
 	} */
@@ -591,8 +660,6 @@ int main() {
 	std::chrono::duration<double> elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
 
-
-	printf("did it!");
-
+	//print_andytoshi_format();
  	return 0;
 }
