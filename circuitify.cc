@@ -653,11 +653,11 @@ void eliminate_temps() {
 		pivot_variable_temp('T', i, index, to_eliminate, true);
 		//pivot_variable('T', i, true);
 	}
-/*	cout << "to be eliminated: " << endl;
+	cout << "eliminating" << endl;
+	sort(to_eliminate.begin(), to_eliminate.end(), greater<int>());
 	for (int x : to_eliminate) {
-		cout << x << endl;
-		//eqs.erase(eqs.begin()+low);
-	}*/
+		eqs.erase(eqs.begin()+x);
+	}
 }
 
 void print_var(int x) {
@@ -673,16 +673,6 @@ void print_var(int x) {
 		cout << "T";
 	cout << val;
 }
-
-
-		/*if (type == 'L')
-			return 0;
-		else if (type == 'R') 
-			return 1;
-		else if (type == 'O')
-			return 2;
-		else if (type == 'T')
-			return 3;*/
 
 void print_andytoshi_format() {
 	printf("%d,0,%d,%lu; ", mul_count, bit_count, eqs.size());
