@@ -138,9 +138,56 @@ public:
 		}
 	}
 
+	//TODO: refactor this
+	void print_var(int x) {
+	int type = x % 4;
+	int val = x / 4;
+	if (type == 0) 
+		cout << "L";
+	else if (type == 1)
+		cout << "R";
+	else if (type == 2)
+		cout << "O";
+	else if (type == 3)
+		cout << "T";
+	cout << val;
+}
+
 	void to_str() {
-		for (std::map<int,mpz_class>::iterator it=var_map.begin(); it!=var_map.end(); ++it)
-    		std::cout << it->first << " => " << it->second << '\n';
+		for (std::map<int,mpz_class>::iterator it=var_map.begin(); it!=var_map.end(); ++it) {
+    		print_var(it->first);
+    		std::cout << " => " << it->second << '\n';
+    	}
+	}
+
+	int cost() {
+		int total = 0;
+		map<mpz_class, int> negs;
+		map<mpz_class, int> counts;
+		mpz_class high = 0;
+		for (auto& e : var_map) {
+			mpz_class val = e.second;
+			total += 1;
+			int negate = 0;
+			mpz_class diff = mod - val;
+			if (diff < val) {
+				val = diff;
+				negate = 1;
+			}
+			if (counts.count(val) != 0) {
+				counts[val] += 1;
+				negs[val] += negate;
+			} else {
+				counts[val] = 1;
+				negs[val] = negate;
+			}
+			if (counts[val] > high) {
+				high = val;
+			}
+		}
+		int plus_one = max(negs[high], counts[high] - negs[high]);
+		int neg_one = counts[high] - plus_one;
+		return COST_SCALAR_MUL * (total - plus_one - neg_one) + COST_SCALAR_NEG * neg_one + COST_SCALAR_COPY;
 	}
 };
 
@@ -154,6 +201,8 @@ class Linear {
 	/*Linear(int v) {
 		val = v;
 	}*/
+
+
 
 	void add_var(char type, int idx, int val) {
 		vars.add_var(type, idx, val);
@@ -201,6 +250,10 @@ class Linear {
 
 	void to_str() {
 		vars.to_str();
+	}
+
+	int equation_cost() {
+		return vars.cost();
 	}
 };
 
@@ -462,10 +515,21 @@ bool all_const(vector<Linear> v) {
 	return true;
 }
 
+mpz_class shift_left(mpz_class x, int i) {
+	mpz_t result;
+	mpz_init(result);
+	mp_bitcnt_t bits = i;
+	mpz_mul_2exp(result, x.get_mpz_t(), bits);
+	return mpz_class(result);
+}
+
 typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
 void parse_statement(string& s) {
 	//TODO: strip s
 	if (s.length() > 6 && s.substr(0,6) == "debug "){
+		Linear lin = parse_expression(s.substr(6));
+		cout << "DEBUG " << s.substr(6) << ": " << lin.val << endl;
+		lin.to_str();
 		return;
 		//throw invalid_argument("TODO: implement debug");
 	}
@@ -490,7 +554,7 @@ void parse_statement(string& s) {
 			//TODO: assert bits length <= 256
 			vector<Linear> bitvars;
 			if (val.is_const) {
-				for (int i = 0;i < bits.size(); i++) {
+				for (int i = 0; i < bits.size(); i++) {
 					Linear l;
 					mpz_class v = (val.val >> i) & 1;
 					new_const(v,l);
@@ -498,6 +562,7 @@ void parse_statement(string& s) {
 				} 
 			} else {
 				for (int i = 0; i < bits.size(); i++) {
+					cout << "i: " << i << endl;
 					Linear l;
 					mpz_class v = (val.val >> i) & 1;
 					new_temp(v,l);
@@ -510,9 +575,11 @@ void parse_statement(string& s) {
 					Linear eq = new_multiplication(tmp, tmp2);
 					eqs.push_back(eq);
 					tmp = l;
-					tmp.mul(1 << i);
+					mpz_class shifted_i = shift_left(1, i);
+					tmp.mul(shifted_i);
 					val.sub(tmp);
 				}
+				eqs.push_back(val);
 			}
 			for (int i = 0; i < bits.size(); i++) {
 				varset[bits[i]] = bitvars[i];
@@ -535,7 +602,8 @@ void parse_statement(string& s) {
 					varset[left] = val;
 					for (int i = 0; i < bits.size(); i++) {
 						Linear tmp = bits[i];
-						tmp.mul(1 << i);
+						mpz_class shifted_i = shift_left(1, i);
+						tmp.mul(shifted_i);
 						val.sub(tmp);
 					}
 					eqs.push_back(val);
@@ -549,6 +617,8 @@ void parse_statement(string& s) {
 			Linear l = parse_expression(left);
 			Linear r = parse_expression(right);
 			l.sub(r);
+			cout << "checking equality" << endl;
+			cout << l.val << " " << r.val << endl;
 			//TODO: check l.val == r.val
 			eqs.push_back(l);
 		}
@@ -713,6 +783,14 @@ void print_andytoshi_format() {
 	cout << endl;
 }
 
+int eqs_cost() {
+	int cost = 0;
+	for (auto& x : eqs) {
+		cost += x.equation_cost();
+	}
+	return cost;
+}
+
 
 int main() {
 //  printf("%d\n", modinv(5));
@@ -743,11 +821,11 @@ int main() {
 		}
 		cout << endl;
 	}*/
-//	print_andytoshi_format();
+	//print_andytoshi_format();
 
 	//printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
 	
-	printf("%d multiplications, %d temporaries, %lu constraints\n", mul_count, temp_count, eqs.size());
+	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost());
 /*	for (int i = 0; i < eqs.size(); i++) {
 		eqs[i].to_str();
 	} */
