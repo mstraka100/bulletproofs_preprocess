@@ -132,6 +132,7 @@ public:
 		}
 	}
 
+	//TODO: division is broken
 	void div(mpz_class v) {
 		for (auto const&x : var_map) {
 			var_map[x.first] = (var_map[x.first] / v) % mod;
@@ -152,6 +153,10 @@ public:
 		cout << "T";
 	cout << val;
 }
+
+	bool is_empty() {
+		return var_map.empty();
+	}
 
 	void to_str() {
 		for (std::map<int,mpz_class>::iterator it=var_map.begin(); it!=var_map.end(); ++it) {
@@ -194,15 +199,9 @@ public:
 class Linear {
 
 	public:
-	mpz_class val;
-	bool is_const;
+	mpz_class real;
+	mpz_class constant;
 	Vars vars; 
-
-	/*Linear(int v) {
-		val = v;
-	}*/
-
-
 
 	void add_var(char type, int idx, int val) {
 		vars.add_var(type, idx, val);
@@ -221,26 +220,26 @@ class Linear {
 	}
 
 	void add(Linear& other) {
-		val += other.val;
-		if (!other.is_const)
-			is_const = false;
+		real = (real + other.real) % mod;
+		constant = (constant + other.constant) % mod;
 		vars.add(other.vars);
 	}
 
 	void sub(Linear& other) {
-		val -= other.val;
-		if (!other.is_const)
-			is_const = false;
+		real = (real - other.real + mod) % mod;
+		constant = (constant - other.constant + mod) % mod;
 		vars.sub(other.vars);
 	}
 
 	void mul(mpz_class v) {
-		val *= v;
+		real = (real * v) % mod;
+		constant = (constant * v) % mod;
 		vars.mul(v);
 	}
 
 	void div(mpz_class v) {
-		val /= v;
+		real = (real / v) % mod;
+		constant = (constant / v) % mod;
 		vars.div(v);
 	}
 
@@ -254,6 +253,10 @@ class Linear {
 
 	int equation_cost() {
 		return vars.cost();
+	}
+
+	bool is_const() {
+		return vars.is_empty();
 	}
 };
 
@@ -285,41 +288,42 @@ void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no)
 	mpz_class o = (l*r) % mod;
 	struct mul m = {l, r, o};
 	mul_data.push_back(m);
-	nl.val = l;
-	nl.is_const = false;
+	nl.real = l;
+	nl.constant = 0;
 	nl.add_var('L', mul_count, 1);
-	nr.val = r;
-	nr.is_const = false;
+	nr.real = r;
+	nr.constant = 0;
 	nr.add_var('R', mul_count, 1);
-	no.val = o;
-	no.is_const = false;
+	no.real = o;
+	no.constant = 0;
 	no.add_var('O', mul_count, 1);
 	mul_count += 1;
 }
 
 void new_temp(mpz_class v, Linear& nt) {
-	nt.val = v;
-	nt.is_const = false;
+	nt.real = v;
+	nt.constant = 0;
 	nt.add_var('T', temp_count, 1);
 	temp_count += 1;
 }
 
 void new_const(mpz_class v, Linear& nc) {
-	nc.val = v;
-	nc.is_const = true;
+	nc.real = v;
+	nc.constant = v;
 }
 
 // currently mutates l and/or r
 Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
-	if (l.is_const) {
-		r.mul(l.val);
+	if (l.is_const()) {
+		r.mul(l.constant);
 		return r;
 	}
-	if (r.is_const) {
-		l.mul(r.val);
+	if (r.is_const()) {
+		l.mul(r.constant);
 		return l;
 	}
-	if (r.val < l.val) {
+
+	if (r.constant < l.constant) {
 		Linear tmp = l;
 		l = r;
 		r = tmp;
@@ -327,7 +331,7 @@ Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
 	Linear lv = Linear();
 	Linear rv = Linear();
 	Linear ret = Linear();
-	new_mul(l.val, r.val, lv, rv, ret);
+	new_mul(l.real, r.real, lv, rv, ret);
 	l.sub(lv);
 	eqs.push_back(l);
 	if (addeqs){
@@ -339,14 +343,14 @@ Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
 
 // mutates l and/or r
 Linear new_division(Linear& l, Linear& r) {
-	if (r.is_const) {
-		l.div(r.val);
+	if (r.is_const()) {
+		l.div(r.constant);
 		return l;
 	}
 	Linear lv = Linear();
 	Linear rv = Linear();
 	Linear ret = Linear();
-	new_mul(l.val * modinv(r.val), r.val, lv, rv, ret);
+	new_mul(l.real * modinv(r.real), r.real, lv, rv, ret);
 	l.sub(lv);
 	r.sub(rv);
 	eqs.push_back(l);
@@ -509,7 +513,7 @@ vector<Linear> parse_expressions(string s) {
 
 bool all_const(vector<Linear> v) {
 	for (int i = 0; i < v.size(); i++) {
-		if (!v[i].is_const)
+		if (!v[i].is_const())
 			return false;
 	}
 	return true;
@@ -528,8 +532,9 @@ void parse_statement(string& s) {
 	//TODO: strip s
 	if (s.length() > 6 && s.substr(0,6) == "debug "){
 		Linear lin = parse_expression(s.substr(6));
-		cout << "DEBUG " << s.substr(6) << ": " << lin.val << endl;
+		cout << "DEBUG " << s.substr(6) << ": " << lin.real << endl;
 		lin.to_str();
+		cout << "const => " << lin.constant << endl;
 		return;
 		//throw invalid_argument("TODO: implement debug");
 	}
@@ -553,10 +558,10 @@ void parse_statement(string& s) {
 			Linear val = parse_expression(right);
 			//TODO: assert bits length <= 256
 			vector<Linear> bitvars;
-			if (val.is_const) {
+			if (val.is_const()) {
 				for (int i = 0; i < bits.size(); i++) {
 					Linear l;
-					mpz_class v = (val.val >> i) & 1;
+					mpz_class v = (val.real >> i) & 1;
 					new_const(v,l);
 					bitvars.push_back(l);
 				} 
@@ -564,7 +569,7 @@ void parse_statement(string& s) {
 				for (int i = 0; i < bits.size(); i++) {
 					cout << "i: " << i << endl;
 					Linear l;
-					mpz_class v = (val.val >> i) & 1;
+					mpz_class v = (val.real >> i) & 1;
 					new_temp(v,l);
 					bitvars.push_back(l);
 					Linear tmp = l;
@@ -591,7 +596,7 @@ void parse_statement(string& s) {
 			mpz_class real = 0;
 			for (int i = 0; i < bits.size(); i++) {
 				//TODO: Assert bit either 0 or 1
-				real = real + bits[i].val * (1 << i);
+				real = real + bits[i].real * (1 << i);
 				if (all_const(bits)) {
 					Linear val;
 					new_const(real, val);
@@ -618,7 +623,7 @@ void parse_statement(string& s) {
 			Linear r = parse_expression(right);
 			l.sub(r);
 			cout << "checking equality" << endl;
-			cout << l.val << " " << r.val << endl;
+			cout << l.real << " " << r.real << endl;
 			//TODO: check l.val == r.val
 			eqs.push_back(l);
 		}
@@ -661,7 +666,6 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 	}
 	if (eliminate and cc > 0) {
 		to_eliminate.push_back(low);
-		//eqs.erase(eqs.begin()+low);
 	}
 }
 
@@ -773,7 +777,7 @@ void print_andytoshi_format() {
 			pos += 1;
 		}
 		cout << " = ";
-		mpz_class val = (mod - eqs[i].val) % mod;
+		mpz_class val = (mod - eqs[i].constant) % mod;
 		if (val * 2 > mod) {
 			cout << "-";
 			val = mod - val;
