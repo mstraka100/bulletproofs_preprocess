@@ -43,6 +43,20 @@ mpz_class modinv(mpz_class x) {
 	return mpz_class(ret);
 }
 
+void print_var(int x) {
+	int type = x % 4;
+	int val = x / 4;
+	if (type == 0) 
+		cout << "L";
+	else if (type == 1)
+		cout << "R";
+	else if (type == 2)
+		cout << "O";
+	else if (type == 3)
+		cout << "T";
+	cout << val;
+}
+
 class Vars {
 
 private:
@@ -140,27 +154,11 @@ public:
 		}
 	}
 
-	//TODO: division is broken
 	void div(mpz_class v) {
 		for (auto const&x : var_map) {
 			var_map[x.first] = (var_map[x.first] / v) % mod;
 		}
-	}
-
-	//TODO: refactor this
-	void print_var(int x) {
-	int type = x % 4;
-	int val = x / 4;
-	if (type == 0) 
-		cout << "L";
-	else if (type == 1)
-		cout << "R";
-	else if (type == 2)
-		cout << "O";
-	else if (type == 3)
-		cout << "T";
-	cout << val;
-}
+	}	
 
 	bool is_empty() {
 		return var_map.empty();
@@ -237,7 +235,6 @@ class Linear {
 		real = (real - other.real + mod) % mod;
 		constant = (constant - other.constant + mod) % mod;
 		vars.sub(other.vars);
-		cout << "SUBBING" << endl;
 	}
 
 	void mul(mpz_class v) {
@@ -247,14 +244,8 @@ class Linear {
 	}
 
 	void div(mpz_class v) {
-		cout << "DIVIDING" << endl;
 		v = modinv(v);
-		cout << "div value: " << v << endl << "real value to divide: " << real << endl;
 		mul(v);
-		//real = (real * v) % mod;
-		//real = (real / v) % mod;
-		//constant = (constant / v) % mod;
-	//	vars.div(v);
 	}
 
 	void index_temp_vars(map<int, vector<int>>& index, int pos) {
@@ -358,9 +349,6 @@ Linear new_division(Linear& l, Linear& r) {
 	Linear rv = Linear();
 	Linear ret = Linear();
 	new_mul((l.real * modinv(r.real)) % mod, r.real, ret, rv, lv);
-	/*cout << "l: " << l.real << " lv: " << lv.real << " r: " << r.real << " rv: " << rv.real << endl;
-	cout << "inverse: " << l.real * modinv(r.real) << endl;
-	cout << "ret: " << ret.real << endl;*/
 	l.sub(lv);
 	r.sub(rv);
 	eqs.push_back(l);
@@ -368,6 +356,7 @@ Linear new_division(Linear& l, Linear& r) {
 	return ret;
 }
 
+// mutates l and/or r
 Linear new_xor(Linear& l, Linear& r) {
 	Linear lv = Linear();
 	Linear rv = Linear();
@@ -404,7 +393,6 @@ struct expr {
 };
 
 bool split_expr_binary(string& s, vector<string> ops, struct expr& result) {
-	//int i = 1;
 	int depth = 0;
 	for (int i = s.length(); i > 1; i--) {
 		if (s[i-1] == ')')
@@ -454,14 +442,12 @@ Linear parse_expression(string s) {
 	delim = {"*", "/"};
 	split = split_expr_binary(s, delim, sp);
 	if (split) {
-		cout << "multiplying or dividing" << endl;
 		Linear left = parse_expression(sp.l);
 		Linear right = parse_expression(sp.r);
 		if (sp.op == "*") {
 			Linear ret = new_multiplication(left, right);
 			return ret;
 		} else {
-			cout << "new division" << endl;
 			Linear ret = new_division(left, right);
 			return ret;
 		}
@@ -545,7 +531,6 @@ void parse_statement(string& s) {
 		lin.to_str();
 		cout << "const => " << lin.constant << endl;
 		return;
-		//throw invalid_argument("TODO: implement debug");
 	}
 	vector<string> assn_ops = {":=", "=:", "==", "="};
 	struct expr sp;
@@ -557,7 +542,6 @@ void parse_statement(string& s) {
 
 		if (op == ":=") {
 			vector<string> bits;
-			//TODO: Abstract out splitting string
 			boost::char_separator<char> sep{","};
   			tokenizer tok{left, sep};
 			for (const auto &b : tok) {
@@ -627,6 +611,7 @@ void parse_statement(string& s) {
 			Linear ex = parse_expression(right);
 			varset[left] = ex;
 		} else if (op == "==") {
+			// TODO: Cost after equality operator is wrong
 			Linear l = parse_expression(left);
 			Linear r = parse_expression(right);
 			l.sub(r);
@@ -634,6 +619,7 @@ void parse_statement(string& s) {
 			cout << l.real << " " << r.real << endl;
 			//TODO: check l.val == r.val
 			eqs.push_back(l);
+			l.to_str();
 		}
 	}
 }
@@ -733,7 +719,6 @@ void eliminate_temps() {
 		if (i % 250 == 0)
 			cout << "temp_eliminated: " << i << "/" << temp_count << endl;
 		pivot_variable_temp('T', i, index, to_eliminate, true);
-		//pivot_variable('T', i, true);
 	}
 	cout << "eliminating" << endl;
 	sort(to_eliminate.begin(), to_eliminate.end(), greater<int>());
@@ -742,30 +727,13 @@ void eliminate_temps() {
 	}
 }
 
-void print_var(int x) {
-	int type = x % 4;
-	int val = x / 4;
-	if (type == 0) 
-		cout << "L";
-	else if (type == 1)
-		cout << "R";
-	else if (type == 2)
-		cout << "O";
-	else if (type == 3)
-		cout << "T";
-	cout << val;
-}
-
 void print_andytoshi_format() {
 	printf("%d,0,%d,%lu; ", mul_count, bit_count, eqs.size());
 	for (int i = 0; i < eqs.size(); i++) {
 		int pos = 0;
 		for (auto e: eqs[i].vars.var_map) {
-		//	cout << "printing pos: " << pos << endl;
-
 			int key = e.first;
 			mpz_class val = e.second % mod;
-		//	cout << endl << "printing val: " << val << endl;
 
 			bool negative = false;
 			if (val*2 > mod) {
@@ -780,7 +748,6 @@ void print_andytoshi_format() {
 				cout << " + ";
 			if (val > 1)
 				cout << val << "*";
-		//	cout << "printing i: " << i << endl;
 			print_var(key);
 			pos += 1;
 		}
@@ -805,42 +772,16 @@ int eqs_cost() {
 
 
 int main() {
-//  printf("%d\n", modinv(5));
-  
-/*  mpz_class n;
-  n = 0;
-  printf("n = ");
-  cout << n;
-  printf("\n");*/
 
-/*	vector<string> input = {"v1 = #2", "v2 = #5", "v3 = v1 * v2", "v4 = v3 * v3"};
-
-	for (int i = 0; i < input.size(); i++)
-		parse_statement(input[i]);*/
-
-//	cout << clean_expr("(#0)") << endl;
 	string input_line;
 	while (getline(cin, input_line)) {
 		cout << "input line: " << input_line << endl;
 		parse_statement(input_line);
 	}
 
-/*	map<int, vector<int>> index = index_temp_vars();
-	for (auto& x : index) {
-		cout << x.first << " : ";
-		for (auto& y : x.second) {
-			cout << y;
-		}
-		cout << endl;
-	}*/
 	//print_andytoshi_format();
-
-	//printf("%d multiplications, %d temporaries, %lu constraints", mul_count, temp_count, eqs.size());
 	
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost());
-/*	for (int i = 0; i < eqs.size(); i++) {
-		eqs[i].to_str();
-	} */
 
 	auto start = chrono::high_resolution_clock::now();
 	eliminate_temps();
