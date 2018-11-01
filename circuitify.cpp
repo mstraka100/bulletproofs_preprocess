@@ -35,14 +35,6 @@ regex var_re = regex("[A-Za-z_][0-9a-zA-Z_]*");
 regex secret_re = regex("#(-?[0-9]+)");
 regex num_re = regex("[0-9]+");
 
-mpz_class modinv(mpz_class x) {
-	mpz_t ret;
-	mpz_init(ret);
-	mpz_class n = mod - 2;
-	mpz_powm(ret, x.get_mpz_t(), n.get_mpz_t(), mod.get_mpz_t());
-	return mpz_class(ret);
-}
-
 class Vars {
 
 private:
@@ -237,7 +229,6 @@ class Linear {
 		real = (real - other.real + mod) % mod;
 		constant = (constant - other.constant + mod) % mod;
 		vars.sub(other.vars);
-		cout << "SUBBING" << endl;
 	}
 
 	void mul(mpz_class v) {
@@ -247,9 +238,7 @@ class Linear {
 	}
 
 	void div(mpz_class v) {
-		cout << "DIVIDING" << endl;
 		v = modinv(v);
-		cout << "div value: " << v << endl << "real value to divide: " << real << endl;
 		mul(v);
 		//real = (real * v) % mod;
 		//real = (real / v) % mod;
@@ -288,6 +277,14 @@ struct multiplication {
 	Linear r;
 	Linear o;
 };
+
+mpz_class modinv(mpz_class x) {
+	mpz_t ret;
+	mpz_init(ret);
+	mpz_class n = mod - 2;
+	mpz_powm(ret, x.get_mpz_t(), n.get_mpz_t(), mod.get_mpz_t());
+	return mpz_class(ret);
+}
 
 void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no)
 {
@@ -350,17 +347,13 @@ Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
 // mutates l and/or r
 Linear new_division(Linear& l, Linear& r) {
 	if (r.is_const()) {
-		cout << "dividing by constant" << endl;
 		l.div(r.constant);
 		return l;
 	}
 	Linear lv = Linear();
 	Linear rv = Linear();
 	Linear ret = Linear();
-	new_mul((l.real * modinv(r.real)) % mod, r.real, ret, rv, lv);
-	/*cout << "l: " << l.real << " lv: " << lv.real << " r: " << r.real << " rv: " << rv.real << endl;
-	cout << "inverse: " << l.real * modinv(r.real) << endl;
-	cout << "ret: " << ret.real << endl;*/
+	new_mul(l.real * modinv(r.real), r.real, lv, rv, ret);
 	l.sub(lv);
 	r.sub(rv);
 	eqs.push_back(l);
@@ -454,14 +447,12 @@ Linear parse_expression(string s) {
 	delim = {"*", "/"};
 	split = split_expr_binary(s, delim, sp);
 	if (split) {
-		cout << "multiplying or dividing" << endl;
 		Linear left = parse_expression(sp.l);
 		Linear right = parse_expression(sp.r);
 		if (sp.op == "*") {
 			Linear ret = new_multiplication(left, right);
 			return ret;
 		} else {
-			cout << "new division" << endl;
 			Linear ret = new_division(left, right);
 			return ret;
 		}
@@ -520,6 +511,9 @@ vector<Linear> parse_expressions(string s) {
 	return ret;
 }
 
+
+//void split_by_delimiter(constconst string delim, )
+
 bool all_const(vector<Linear> v) {
 	for (int i = 0; i < v.size(); i++) {
 		if (!v[i].is_const())
@@ -576,6 +570,7 @@ void parse_statement(string& s) {
 				} 
 			} else {
 				for (int i = 0; i < bits.size(); i++) {
+					cout << "i: " << i << endl;
 					Linear l;
 					mpz_class v = (val.real >> i) & 1;
 					new_temp(v,l);
