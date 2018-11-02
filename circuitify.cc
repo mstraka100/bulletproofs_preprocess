@@ -43,18 +43,20 @@ mpz_class modinv(mpz_class x) {
 	return mpz_class(ret);
 }
 
-void print_var(int x) {
+string var_str(int x) {
 	int type = x % 4;
 	int val = x / 4;
+	string result;
 	if (type == 0) 
-		cout << "L";
+		result = "L";
 	else if (type == 1)
-		cout << "R";
+		result = "R";
 	else if (type == 2)
-		cout << "O";
+		result = "O";
 	else if (type == 3)
-		cout << "T";
-	cout << val;
+		result = "T";
+	result.append(to_string(val));
+	return result;
 }
 
 class Vars {
@@ -164,11 +166,46 @@ public:
 		return var_map.empty();
 	}
 
-	void to_str() {
+	/*void to_str() {
 		for (std::map<int,mpz_class>::iterator it=var_map.begin(); it!=var_map.end(); ++it) {
     		print_var(it->first);
     		std::cout << " => " << it->second << '\n';
     	}
+	}*/
+
+	void str(mpz_class constant) {
+		vector<string> terms;
+		for (auto const&e : var_map) {
+			string name = var_str(e.first);
+			mpz_class val = e.second;
+			stringstream s;
+			if (val == 1)
+				terms.push_back(name);
+			else if ((val + 1) % mod == 0)
+				terms.push_back("-" + name);
+			else if (mod - val < 10000) {
+				s << "-" << mod-val << "*" << name;
+				terms.push_back(s.str());
+			} else {
+				s << (val) << "*" << name;
+				terms.push_back(s.str());
+			}
+		}
+		stringstream s;
+	    if (terms.empty() || constant != 0) {
+			if (mod - constant < 10000) {
+				s << "-" << mod-constant;
+				terms.push_back(s.str());
+			}
+			else {
+				s << constant;
+				terms.push_back(s.str());
+			}
+		}
+		
+		for (auto const&x : terms) {
+			cout << x << " + ";
+		}
 	}
 
 	int cost() {
@@ -192,7 +229,7 @@ public:
 				counts[val] = 1;
 				negs[val] = negate;
 			}
-			if (counts[val] > high) {
+			if (high == 0 || counts[val] > counts[high]) {
 				high = val;
 			}
 		}
@@ -253,7 +290,7 @@ class Linear {
 	}
 
 	void to_str() {
-		vars.to_str();
+		vars.str(constant);
 	}
 
 	int equation_cost() {
@@ -748,7 +785,7 @@ void print_andytoshi_format() {
 				cout << " + ";
 			if (val > 1)
 				cout << val << "*";
-			print_var(key);
+			cout << var_str(key);
 			pos += 1;
 		}
 		cout << " = ";
@@ -766,6 +803,7 @@ int eqs_cost() {
 	int cost = 0;
 	for (auto& x : eqs) {
 		cost += x.equation_cost();
+		cout << "cost: " << x.equation_cost() << endl;
 	}
 	return cost;
 }
@@ -783,6 +821,7 @@ int main() {
 	
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost());
 
+	eqs[eqs.size()-1].to_str();
 	auto start = chrono::high_resolution_clock::now();
 	eliminate_temps();
 	auto finish = chrono::high_resolution_clock::now();
