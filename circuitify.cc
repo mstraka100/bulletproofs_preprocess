@@ -378,7 +378,6 @@ Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
 // mutates l and/or r
 Linear new_division(Linear& l, Linear& r) {
 	if (r.is_const()) {
-		cout << "dividing by constant" << endl;
 		l.div(r.constant);
 		return l;
 	}
@@ -670,20 +669,21 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 	vector<int> vec;
 	vector<int> temp_eqs = index[idx];
 	for (int i = 0; i < temp_eqs.size(); i++) {
-		if (true) {//temp_eqs[i].has_var(type, idx)) {
-			Linear &lin = eqs[temp_eqs[i]];
-			vec.push_back(temp_eqs[i]);
-			cc += 1;
-			if (low == -1 || c > lin.num_vars()) {
-				low = temp_eqs[i];
-				c = lin.num_vars();
-				Linear tmp = lin;
-				mpz_class v = lin.get_var(type, idx);
-				mpz_class inv = modinv(v);
-				tmp.mul(inv);
-				leq = lin;
-				break;
-			}
+		/*if (find(to_eliminate.begin(), to_eliminate.end(), temp_eqs[i]) != to_eliminate.end()) {
+			continue;
+		}*/
+		Linear &lin = eqs[temp_eqs[i]];
+		vec.push_back(temp_eqs[i]);
+		cc += 1;
+		if (low == -1 || c > lin.num_vars()) {
+			low = temp_eqs[i];
+			c = lin.num_vars();
+			Linear tmp = lin;
+			mpz_class v = lin.get_var(type, idx);
+			mpz_class inv = modinv(v);
+			tmp.mul(inv);
+			leq = lin;
+			break;
 		}
 	}
 	if (cc > 1) {
@@ -696,7 +696,8 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 		}
 	}
 	if (eliminate and cc > 0) {
-		to_eliminate.push_back(low);
+	//	if (find(to_eliminate.begin(), to_eliminate.end(), low) == to_eliminate.end())
+			to_eliminate.push_back(low);
 	}
 }
 
@@ -803,7 +804,6 @@ int eqs_cost() {
 	int cost = 0;
 	for (auto& x : eqs) {
 		cost += x.equation_cost();
-		cout << "cost: " << x.equation_cost() << endl;
 	}
 	return cost;
 }
@@ -821,12 +821,13 @@ int main() {
 	
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost());
 
-	eqs[eqs.size()-1].to_str();
 	auto start = chrono::high_resolution_clock::now();
 	eliminate_temps();
 	auto finish = chrono::high_resolution_clock::now();
 	std::chrono::duration<double> elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
+
+	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost());
 
 	//print_andytoshi_format();
  	return 0;
