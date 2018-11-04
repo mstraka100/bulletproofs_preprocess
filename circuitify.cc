@@ -59,10 +59,14 @@ string var_str(int x) {
 	return result;
 }
 
-class Vars {
+//TODO: This is bad abstraction
+int random_variable() {
+	int offset = rand() % 3; //'L', 'R', or 'O'
+	int idx = rand() % mul_count;
+	return 4*idx + offset;
+}
 
-private:
-	int var_offset(char type) {
+int var_offset(char type) {
 		if (type == 'L')
 			return 0;
 		else if (type == 'R') 
@@ -92,6 +96,25 @@ private:
 	int var_idx(int x) {
 		return x / 4;
 	}
+
+class Vars {
+
+/*private:
+	int var_idx(int x) {
+		return x / 4;
+	}*/
+
+
+private:
+	void reduce() {
+		for(map<int, mpz_class>::iterator it = var_map.begin(); it != var_map.end();) {
+			if((it->second % mod) == 0) {
+				it = var_map.erase(it);
+			} else {
+				it++;
+			}
+		}
+	}	
 
 public:
 	map<int, mpz_class> var_map;
@@ -138,6 +161,7 @@ public:
 				var_map[x.first] = (var_map[x.first] + x.second) % mod;
 			}
 		}
+		reduce();
 	}
 
 	void sub(Vars& other) {
@@ -148,6 +172,7 @@ public:
 				var_map[x.first] = (var_map[x.first] - x.second + mod) % mod;
 			}
 		}
+		reduce();
 	}
 
 	void mul(mpz_class v) {
@@ -164,6 +189,15 @@ public:
 
 	bool is_empty() {
 		return var_map.empty();
+	}
+
+	bool is_zero() {
+		for (auto const&x : var_map) {
+			if (x.second != 0) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/*void to_str() {
@@ -299,6 +333,13 @@ class Linear {
 
 	bool is_const() {
 		return vars.is_empty();
+	}
+
+	bool is_zero() {
+		if (constant != 0) {
+			return false;
+		}
+		return vars.is_zero();
 	}
 };
 
@@ -568,7 +609,7 @@ void parse_statement(string& s) {
 		cout << "const => " << lin.constant << endl;
 		return;
 	}
-	vector<string> assn_ops = {":=", "=:", "==", "="};
+	vector<string> assn_ops = {":=", "=:", "==", "=", "=?"};
 	struct expr sp;
 	bool match = split_expr_binary(s, assn_ops, sp);
 	if (match) {
@@ -656,6 +697,13 @@ void parse_statement(string& s) {
 			//TODO: check l.val == r.val
 			eqs.push_back(l);
 			l.to_str();
+		} else if (op == "=?") {
+			Linear ex = parse_expression(right);
+			int is_zero = ex.is_zero();
+			Linear lin;
+			lin.real = is_zero;
+			lin.constant = is_zero;
+			varset[left] = lin;
 		}
 	}
 }
@@ -668,6 +716,7 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 	Linear leq;
 	vector<int> vec;
 	vector<int> temp_eqs = index[idx];
+//	cout << "Size: " << temp_eqs.size() << endl;
 	for (int i = 0; i < temp_eqs.size(); i++) {
 		/*if (find(to_eliminate.begin(), to_eliminate.end(), temp_eqs[i]) != to_eliminate.end()) {
 			continue;
@@ -683,7 +732,6 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 			mpz_class inv = modinv(v);
 			tmp.mul(inv);
 			leq = lin;
-			break;
 		}
 	}
 	if (cc > 1) {
@@ -701,39 +749,47 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 	}
 }
 
-void pivot_variable(char type, int idx, bool eliminate = false) {
+void pivot_variable(vector<Linear>& eqs_vec, int vnam, bool eliminate = false) {
+	char type = var_type(vnam);
+	int idx = var_idx(vnam);
 	int c = 0;
 	int cc = 0;
 	int low = -1;
 	Linear leq;
 	vector<int> vec;
-	for (int i = 0; i < eqs.size(); i++) {
-		if (eqs[i].has_var(type, idx)) {
+//	cout << "pivot_varing, type: " << type << " idx: " << idx << endl;
+	for (int i = 0; i < eqs_vec.size(); i++) {
+		if (eqs_vec[i].has_var(type, idx)) {
+	//		cout << "found it!" << endl;
 			vec.push_back(i);
 			cc += 1;
-			if (low == -1 || c > eqs[i].num_vars()) {
+			if (low == -1 || c > eqs_vec[i].num_vars()) {
 				low = i;
-				c = eqs[i].num_vars();
-				Linear tmp = eqs[i];
-				mpz_class v = eqs[i].get_var(type, idx);
+				c = eqs_vec[i].num_vars();
+				Linear tmp = eqs_vec[i];
+				mpz_class v = eqs_vec[i].get_var(type, idx);
 				mpz_class inv = modinv(v);
 				tmp.mul(inv);
-				leq = eqs[i];
-				break;
+				leq = eqs_vec[i];
 			}
 		}
 	}
+//	cout << "cc: " << cc << endl;
 	if (cc > 1) {
 		for (auto i: vec) {
 			if (i != low) {
 				Linear tmp = leq;
-				tmp.mul(eqs[i].get_var(type, idx));
-				eqs[i].sub(tmp);
+				tmp.mul(eqs_vec[i].get_var(type, idx));
+				int before = eqs_vec[i].equation_cost();
+				eqs_vec[i].sub(tmp);
+				int after = eqs_vec[i].equation_cost();
+				int diff = after - before;
+			//	cout << diff << endl;
 			}
 		}
 	}
 	if (eliminate and cc > 0) {
-		eqs.erase(eqs.begin()+low);
+		eqs_vec.erase(eqs_vec.begin()+low);
 	}
 }
 
@@ -745,12 +801,29 @@ map<int, vector<int>> index_temp_vars() {
 	return temp_index;
 }
 
+vector<Linear> eliminate_indices(vector<Linear> vec, vector<int> to_eliminate) {
+	//int *a = &vec[0];
+	sort(to_eliminate.begin(), to_eliminate.end());
+	int j = 0;
+	vector<Linear> result;
+	for (int i = 0; i < vec.size(); i++) {
+		if (to_eliminate[j] == i) {
+			j += 1;
+			continue;
+		}
+		result.push_back(vec[i]);
+	}
+	return result;
+}
+
 void eliminate_temps() {
 	auto start = chrono::high_resolution_clock::now();
 	map<int, vector<int>> index = index_temp_vars();
 	auto finish = chrono::high_resolution_clock::now();
 	std::chrono::duration<double> elapsed = finish - start;
 	cout << "Time to index temp vars: " << elapsed.count() << endl;
+
+
 	
 	vector<int> to_eliminate;
 	for (int i = 0; i < temp_count; i++) {
@@ -759,10 +832,26 @@ void eliminate_temps() {
 		pivot_variable_temp('T', i, index, to_eliminate, true);
 	}
 	cout << "eliminating" << endl;
+	start = chrono::high_resolution_clock::now();
 	sort(to_eliminate.begin(), to_eliminate.end(), greater<int>());
-	for (int x : to_eliminate) {
+	finish = chrono::high_resolution_clock::now();
+	elapsed = finish - start;
+	cout << "Time to sort to_eliminate: " << elapsed.count() << endl;
+	start = chrono::high_resolution_clock::now();
+
+
+	/*for (int x : to_eliminate) {
 		eqs.erase(eqs.begin()+x);
-	}
+	}*/
+
+	eqs = eliminate_indices(eqs, to_eliminate);
+
+
+	finish = chrono::high_resolution_clock::now();
+	elapsed = finish - start;
+	cout << "Time to delete temp vars: " << elapsed.count() << endl;
+
+
 }
 
 void print_andytoshi_format() {
@@ -800,12 +889,39 @@ void print_andytoshi_format() {
 	cout << endl;
 }
 
-int eqs_cost() {
+int eqs_cost(vector<Linear>& eqs_vec) {
 	int cost = 0;
-	for (auto& x : eqs) {
+	for (auto& x : eqs_vec) {
 		cost += x.equation_cost();
 	}
 	return cost;
+}
+
+void reduce_eqs(int iter) {
+	auto start = chrono::high_resolution_clock::now();
+	int cost = eqs_cost(eqs);
+	for (int i = 0; i < iter; i++) {
+		vector<Linear> neweqs = eqs;
+		if (i % 10 == 0) {
+			auto now = chrono::high_resolution_clock::now();
+			std::chrono::duration<double> elapsed = now - start;
+			cout << "[" << elapsed.count() << "]" << " Reduced to " << eqs_cost(eqs)
+			<< " cost (step " << i << "/" << iter << ")" << endl;
+		}
+		for (int j = 0; j < 4; j++) {
+			int vnam = random_variable();
+			pivot_variable(neweqs, vnam);
+			int neweqs_cost = eqs_cost(neweqs);
+			if (neweqs_cost < cost) {
+				eqs = neweqs;
+				cost = neweqs_cost;
+				break;
+			}
+		}
+	}
+	auto finish = chrono::high_resolution_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	cout << "Took " << elapsed.count() << " to reduce eqs" << endl;
 }
 
 
@@ -819,7 +935,7 @@ int main() {
 
 	//print_andytoshi_format();
 	
-	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost());
+	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
 
 	auto start = chrono::high_resolution_clock::now();
 	eliminate_temps();
@@ -827,8 +943,14 @@ int main() {
 	std::chrono::duration<double> elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
 
-	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost());
 
 	//print_andytoshi_format();
+
+	start = chrono::high_resolution_clock::now();
+	reduce_eqs(mul_count);
+	finish = chrono::high_resolution_clock::now();
+	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
+
+	print_andytoshi_format();
  	return 0;
 }
