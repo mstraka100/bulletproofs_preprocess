@@ -15,16 +15,23 @@
 #include <regex>
 #include <boost/algorithm/string.hpp>
 #include <boost/tokenizer.hpp>
+#include <iostream>
+#include <fstream>
+#include <bitset>
+#include <climits>
 using namespace std;
 
 #define COST_SCALAR_MUL 5
 #define COST_SCALAR_NEG 2
 #define COST_SCALAR_COPY 1
 
+const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.assn";
+const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.circ";
+
+
 typedef tuple<char, int> var_tuple;
 
 vector<struct mul> mul_data;
-
 
 int mul_count = 0;
 int temp_count = 0;
@@ -34,6 +41,26 @@ mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD03641
 regex var_re = regex("[A-Za-z_][0-9a-zA-Z_]*");
 regex secret_re = regex("#(-?[0-9]+)");
 regex num_re = regex("[0-9]+");
+
+
+template <typename T>
+T swap_endian(T u)
+{
+    static_assert (CHAR_BIT == 8, "CHAR_BIT != 8");
+
+    union
+    {
+        T u;
+        unsigned char u8[sizeof(T)];
+    } source, dest;
+
+    source.u = u;
+
+    for (size_t k = 0; k < sizeof(T); k++)
+        dest.u8[k] = source.u8[sizeof(T) - k - 1];
+
+    return dest.u;
+}
 
 mpz_class modinv(mpz_class x) {
 	mpz_t ret;
@@ -106,6 +133,8 @@ class Vars {
 
 
 private:
+
+	// deletes variables with value 0
 	void reduce() {
 		for(map<int, mpz_class>::iterator it = var_map.begin(); it != var_map.end();) {
 			if((it->second % mod) == 0) {
@@ -271,6 +300,14 @@ public:
 		int neg_one = counts[high] - plus_one;
 		return COST_SCALAR_MUL * (total - plus_one - neg_one) + COST_SCALAR_NEG * neg_one + COST_SCALAR_COPY;
 	}
+
+	map<int, mpz_class>::iterator vars_begin() {
+		return var_map.begin();
+	}
+
+	map<int, mpz_class>::iterator vars_end() {
+		return var_map.end();
+	}
 };
 
 class Linear {
@@ -340,6 +377,14 @@ class Linear {
 			return false;
 		}
 		return vars.is_zero();
+	}
+
+	map<int, mpz_class>::iterator vars_begin() {
+		return vars.vars_begin();
+	}
+
+	map<int, mpz_class>::iterator vars_end() {
+		return vars.vars_end();
 	}
 };
 
@@ -924,33 +969,102 @@ void reduce_eqs(int iter) {
 	cout << "Took " << elapsed.count() << " to reduce eqs" << endl;
 }
 
+string split_into_words(string hex) {
+	string result = "";
+	int padding = hex.length()/4;
+	for (int i = 0; i < padding; i++)
+		result += '0';
+	for (int i = 0; i < hex.length(); i++) {
+		if (i != 0 && (i+padding) % 4 == 0)
+			result += " ";
+		result += hex[i];
+	}
+	return result;
+}
+
+template <typename T>
+string hex_string(T val) {
+	ostringstream oss;
+	oss << hex << val;
+	return oss.str();
+}
+
+template <typename T>
+void write_enc(T val, ofstream& f) {
+	T i = swap_endian<T>(val);
+	string h = hex_string(i);
+	f << split_into_words(h) << " ";
+}
+
+void write_secret_data(string filename) {
+	ofstream f;
+	f.open(filename);
+	// write 1 to file
+	write_enc<uint32_t>(1, f);
+	//write_enc<uint32_t>(0, f);
+	//write_enc<uint64_t>(52, f);
+	f.close();
+}
+
 
 int main() {
 
 	string input_line;
+	auto start = chrono::high_resolution_clock::now();
 	while (getline(cin, input_line)) {
 		cout << "input line: " << input_line << endl;
 		parse_statement(input_line);
 	}
+	auto finish = chrono::high_resolution_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	cout << endl << "Time to parse input: " << elapsed.count() << endl;
+
 
 	//print_andytoshi_format();
 	
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
 
-	auto start = chrono::high_resolution_clock::now();
+	start = chrono::high_resolution_clock::now();
 	eliminate_temps();
-	auto finish = chrono::high_resolution_clock::now();
-	std::chrono::duration<double> elapsed = finish - start;
+	finish = chrono::high_resolution_clock::now();
+	elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
 
 
 	//print_andytoshi_format();
 
-	start = chrono::high_resolution_clock::now();
+/*	start = chrono::high_resolution_clock::now();
 	reduce_eqs(mul_count);
 	finish = chrono::high_resolution_clock::now();
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
-
+*/
 	print_andytoshi_format();
+
+
+
+	/*for (int i = 0; i < eqs.size(); i++) {
+		for (auto it = eps[i].vars_begin(); it != eqs[i].vars_end(); ++it) {
+			char type = var_type(it.first);
+			int idx = var_idx(it.first);
+
+		}
+		// for index, value in eqs[i].vars:
+		// W[index].push_back(i, value)
+		//C.push_back(eqs[i].constant)
+	}*/
+
+	write_secret_data("./testfile");
+
+	/*ofstream myfile;
+	myfile.open("./testfile");
+	uint32_t i = swap_endian<uint32_t>(52);
+	cout << i << endl;
+	//string bin = split_into_bytes(bitset<8>(i).to_string());
+	cout << hex << i << endl;
+	//myfile.write(bin);
+	//myfile << bin;
+	myfile << hex << i << endl;*/
+	//cout << endl << "I wrote to a file!" << endl;
+	//myfile.close();
  	return 0;
 }
