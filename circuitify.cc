@@ -45,21 +45,15 @@ regex num_re = regex("[0-9]+");
 
 
 template <typename T>
-T swap_endian(T u)
-{
+T swap_endian(T u) {
     static_assert (CHAR_BIT == 8, "CHAR_BIT != 8");
-
-    union
-    {
+    union {
         T u;
         unsigned char u8[sizeof(T)];
     } source, dest;
-
     source.u = u;
-
     for (size_t k = 0; k < sizeof(T); k++)
         dest.u8[k] = source.u8[sizeof(T) - k - 1];
-
     return dest.u;
 }
 
@@ -107,43 +101,37 @@ int random_variable() {
 }
 
 int var_offset(char type) {
-		if (type == 'L')
-			return 0;
-		else if (type == 'R') 
-			return 1;
-		else if (type == 'O')
-			return 2;
-		else if (type == 'T')
-			return 3;
-		else
-			throw invalid_argument("Invalid variable type");
-	}
+	if (type == 'L')
+		return 0;
+	else if (type == 'R') 
+		return 1;
+	else if (type == 'O')
+		return 2;
+	else if (type == 'T')
+		return 3;
+	else
+		throw invalid_argument("Invalid variable type");
+}
 
-	char var_type(int x) {
-		int offset = x % 4;
-		if (offset == 0)
-			return 'L';
-		else if (offset == 1)
-			return 'R';
-		else if (offset == 2)
-			return 'O';
-		else if (offset == 3)
-			return 'T';
-		else
-			throw invalid_argument("Modular arithmetic is broken");
-	}
+char var_type(int x) {
+	int offset = x % 4;
+	if (offset == 0)
+		return 'L';
+	else if (offset == 1)
+		return 'R';
+	else if (offset == 2)
+		return 'O';
+	else if (offset == 3)
+		return 'T';
+	else
+		throw invalid_argument("Modular arithmetic is broken");
+}
 
-	int var_idx(int x) {
-		return x / 4;
-	}
+int var_idx(int x) {
+	return x / 4;
+}
 
 class Vars {
-
-/*private:
-	int var_idx(int x) {
-		return x / 4;
-	}*/
-
 
 private:
 
@@ -408,6 +396,11 @@ struct mul {
 	mpz_class l;
 	mpz_class r;
 	mpz_class o;
+};
+
+struct eq_val {
+	unsigned int eq_num;
+	mpz_class val;
 };
 
 struct multiplication {
@@ -1056,6 +1049,11 @@ void write_enc(T val, ofstream& f) {
 	f << split_into_words(h, sizeof(T)/2) << " ";
 }
 
+// does not pad
+void write_mpz_enc(mpz_class val, ofstream& f) {
+	f << split_into_words(encode_scalar_hex(val), 0, false) << " ";
+}
+
 void write_secret_data(string filename) {
 	ofstream f;
 	f.open(filename);
@@ -1065,16 +1063,27 @@ void write_secret_data(string filename) {
 	write_enc<uint64_t>(mul_count, f);
 
 	for (int i = 0; i < mul_data.size(); i++) {
-		f << split_into_words(encode_scalar_hex(mul_data[i].l), 0, false) << " ";
+		write_mpz_enc(mul_data[i].l, f);
 	}
 	for (int i = 0; i < mul_data.size(); i++) {
-		f << split_into_words(encode_scalar_hex(mul_data[i].r), 0, false) << " ";
+		write_mpz_enc(mul_data[i].r, f);
 	}
 	for (int i = 0; i < mul_data.size(); i++) {
-		f << split_into_words(encode_scalar_hex(mul_data[i].o), 0, false) << " ";
+		write_mpz_enc(mul_data[i].o, f);
 	}
 
 	f.close();
+}
+
+void write_matrix(map<int, vector<struct eq_val>>& mat, ofstream& f) {
+	for (auto& e : mat) {
+		vector<struct eq_val> col = e.second;
+		write_enc<uint32_t>(col.size(), f);
+		for (int i = 0; i < col.size(); i++) {
+			write_enc<uint32_t>(col[i].eq_num, f);
+			write_mpz_enc(col[i].val, f);
+		}
+	}
 }
 
 void write_circuit_data(string filename) {
@@ -1088,9 +1097,41 @@ void write_circuit_data(string filename) {
 	write_enc<uint64_t>(bit_count, f);
 	write_enc<uint64_t>(eqs.size(), f);
 
+	map<int, vector<struct eq_val>> WL;
+	map<int, vector<struct eq_val>> WR;
+	map<int, vector<struct eq_val>> WO;
+	vector<mpz_class> C;
+	for (unsigned int i = 0; i < eqs.size(); i++) {
+		for (auto it = eqs[i].vars_begin(); it != eqs[i].vars_end(); ++it) {
+			char type = var_type(it->first);
+			int idx = var_idx(it->first);
+
+			struct eq_val ev = {i, it->second};
+			if (type == 'L') {
+				WL[idx].push_back(ev);
+			} else if (type == 'R') {
+				WR[idx].push_back(ev);
+			} else if (type == 'O') {
+				WO[idx].push_back(ev);
+			} else {
+				throw invalid_argument("unknown type encountered in writing circuit data");
+			}
+		}
+	/*	for (int i = 0; i < (next_mul_count-mul_count); i++) {
+			write_enc<uint32_t>(0, f);
+		}*/
+		C.push_back(eqs[i].constant);
+	}
+
+	write_matrix(WL, f);
+	write_matrix(WR, f);
+	write_matrix(WO, f);
+	for (int i = 0; i < C.size(); i++) {
+		write_mpz_enc((mod-C[i]) % mod, f);
+	}
+
 	f.close();
 }
-
 
 int main() {
 
@@ -1123,7 +1164,7 @@ int main() {
 	finish = chrono::high_resolution_clock::now();
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
 */
-	print_andytoshi_format();
+//	print_andytoshi_format();
 
 
 
@@ -1138,8 +1179,8 @@ int main() {
 		//C.push_back(eqs[i].constant)
 	}*/
 
-	write_secret_data("./testfile.assn");
-	write_circuit_data("./testfile.circ");
+	write_secret_data(SECRET_FILENAME);
+	write_circuit_data(CIRCUIT_FILENAME);
 
 	/*ofstream myfile;
 	myfile.open("./testfile");
