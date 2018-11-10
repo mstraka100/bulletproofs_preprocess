@@ -33,9 +33,9 @@ typedef tuple<char, int> var_tuple;
 
 vector<struct mul> mul_data;
 
-int mul_count = 0;
-int temp_count = 0;
-int bit_count = 0;
+unsigned int mul_count = 0;
+unsigned int temp_count = 0;
+unsigned int bit_count = 0;
 mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141_mpz;
 mpz_class half_mod = (mod+1)/2;
 
@@ -69,6 +69,18 @@ mpz_class modinv(mpz_class x) {
 	mpz_class n = mod - 2;
 	mpz_powm(ret, x.get_mpz_t(), n.get_mpz_t(), mod.get_mpz_t());
 	return mpz_class(ret);
+}
+
+unsigned long next_power_of_two(unsigned long v)
+{
+    v--;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    v++;
+    return v;
 }
 
 string var_str(int x) {
@@ -734,7 +746,6 @@ void parse_statement(string& s) {
 			Linear ex = parse_expression(right);
 			varset[left] = ex;
 		} else if (op == "==") {
-			// TODO: Cost after equality operator is wrong
 			Linear l = parse_expression(left);
 			Linear r = parse_expression(right);
 			l.sub(r);
@@ -1023,7 +1034,6 @@ string split_into_words(string hex, int n_words, bool use_padding = true) {
 			result += " ";
 		result += "0";
 	}
-	cout << result << endl;
 	for (int i = 0; i < hex.length(); i++) {
 		if (i != 0 && (i+padding) % 4 == 0)
 			result += " ";
@@ -1063,6 +1073,20 @@ void write_secret_data(string filename) {
 	for (int i = 0; i < mul_data.size(); i++) {
 		f << split_into_words(encode_scalar_hex(mul_data[i].o), 0, false) << " ";
 	}
+
+	f.close();
+}
+
+void write_circuit_data(string filename) {
+	ofstream f;
+	f.open(filename);
+	unsigned int next_mul_count = next_power_of_two(mul_count);
+	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates, 8 bytes n_bits, 8 bytes n_constraints
+	write_enc<uint32_t>(1, f);
+	write_enc<uint32_t>(0, f);
+	write_enc<uint64_t>(next_mul_count, f);
+	write_enc<uint64_t>(bit_count, f);
+	write_enc<uint64_t>(eqs.size(), f);
 
 	f.close();
 }
@@ -1114,7 +1138,8 @@ int main() {
 		//C.push_back(eqs[i].constant)
 	}*/
 
-	write_secret_data("./testfile");
+	write_secret_data("./testfile.assn");
+	write_circuit_data("./testfile.circ");
 
 	/*ofstream myfile;
 	myfile.open("./testfile");
