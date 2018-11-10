@@ -1,4 +1,4 @@
 import struct
 
 with open("./testfilepython", 'bw') as f:
-	f.write(struct.pack('<L', 52))
+	f.write(struct.pack('<LLQ', 1, 0, 1363))

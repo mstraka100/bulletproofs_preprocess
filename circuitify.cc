@@ -37,6 +37,7 @@ int mul_count = 0;
 int temp_count = 0;
 int bit_count = 0;
 mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141_mpz;
+mpz_class half_mod = (mod+1)/2;
 
 regex var_re = regex("[A-Za-z_][0-9a-zA-Z_]*");
 regex secret_re = regex("#(-?[0-9]+)");
@@ -969,11 +970,60 @@ void reduce_eqs(int iter) {
 	cout << "Took " << elapsed.count() << " to reduce eqs" << endl;
 }
 
-string split_into_words(string hex) {
+string hex_word(mpz_class val) {
+	ostringstream oss;
+	oss << hex << val;
+	string result = oss.str();
+	if (result.length() == 1) {
+		result.insert(0, "0");
+	}
+	return result;
+}
+
+string encode_scalar_hex(mpz_class val) {
+	ostringstream oss;
+	if (val < 0)
+		throw invalid_argument("encode_scalar_hex received negative value");
+
+	mpz_class prefix;
+	if (val > half_mod) {
+		prefix = 0x80;
+		val = mod - val;
+	} else {
+		prefix = 0x00;
+	}
+	int count = 0;
+	while (val > 0) {
+		oss << hex_word(val % 0x100);
+		val = val >> 8;
+		count += 1;
+	}
+	string result = oss.str();
+	prefix = prefix | count;
+	result.insert(0, hex_word(prefix));
+
+	return result;
+}
+
+// each word is 2 bytes
+string split_into_words(string hex, int n_words, bool use_padding = true) {
 	string result = "";
-	int padding = hex.length()/4;
-	for (int i = 0; i < padding; i++)
-		result += '0';
+
+	int padding;
+	if (use_padding) {
+		padding = 4 - (hex.length() % 4);
+		if (padding == 4)
+			padding = 0;
+		padding += 4*n_words - (hex.length()+padding);
+	} else {
+		padding = 0;
+	}
+	for (int i = 0; i < padding; i++) {
+		if (i != 0 && i%4 == 0)
+			result += " ";
+		result += "0";
+	}
+	cout << result << endl;
 	for (int i = 0; i < hex.length(); i++) {
 		if (i != 0 && (i+padding) % 4 == 0)
 			result += " ";
@@ -993,16 +1043,27 @@ template <typename T>
 void write_enc(T val, ofstream& f) {
 	T i = swap_endian<T>(val);
 	string h = hex_string(i);
-	f << split_into_words(h) << " ";
+	f << split_into_words(h, sizeof(T)/2) << " ";
 }
 
 void write_secret_data(string filename) {
 	ofstream f;
 	f.open(filename);
-	// write 1 to file
+	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates
 	write_enc<uint32_t>(1, f);
-	//write_enc<uint32_t>(0, f);
-	//write_enc<uint64_t>(52, f);
+	write_enc<uint32_t>(0, f);
+	write_enc<uint64_t>(mul_count, f);
+
+	for (int i = 0; i < mul_data.size(); i++) {
+		f << split_into_words(encode_scalar_hex(mul_data[i].l), 0, false) << " ";
+	}
+	for (int i = 0; i < mul_data.size(); i++) {
+		f << split_into_words(encode_scalar_hex(mul_data[i].r), 0, false) << " ";
+	}
+	for (int i = 0; i < mul_data.size(); i++) {
+		f << split_into_words(encode_scalar_hex(mul_data[i].o), 0, false) << " ";
+	}
+
 	f.close();
 }
 
