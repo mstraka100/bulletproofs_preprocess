@@ -10,15 +10,15 @@
 #include <string>
 #include <stdexcept>
 #include <gmpxx.h>
-#include <iostream>
 #include <array>
 #include <regex>
 #include <boost/algorithm/string.hpp>
 #include <boost/tokenizer.hpp>
-#include <iostream>
 #include <fstream>
 #include <bitset>
 #include <climits>
+#include "utils.h"
+#include "Vars.h"
 using namespace std;
 
 #define COST_SCALAR_MUL 5
@@ -27,9 +27,6 @@ using namespace std;
 
 const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.assn";
 const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.circ";
-
-
-typedef tuple<char, int> var_tuple;
 
 vector<struct mul> mul_data;
 
@@ -56,260 +53,6 @@ T swap_endian(T u) {
         dest.u8[k] = source.u8[sizeof(T) - k - 1];
     return dest.u;
 }
-
-mpz_class modinv(mpz_class x) {
-	mpz_t ret;
-	mpz_init(ret);
-	mpz_class n = mod - 2;
-	mpz_powm(ret, x.get_mpz_t(), n.get_mpz_t(), mod.get_mpz_t());
-	return mpz_class(ret);
-}
-
-unsigned long next_power_of_two(unsigned long v)
-{
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-    return v;
-}
-
-string var_str(int x) {
-	int type = x % 4;
-	int val = x / 4;
-	string result;
-	if (type == 0) 
-		result = "L";
-	else if (type == 1)
-		result = "R";
-	else if (type == 2)
-		result = "O";
-	else if (type == 3)
-		result = "T";
-	result.append(to_string(val));
-	return result;
-}
-
-//TODO: This is bad abstraction
-int random_variable() {
-	int offset = rand() % 3; //'L', 'R', or 'O'
-	int idx = rand() % mul_count;
-	return 4*idx + offset;
-}
-
-int var_offset(char type) {
-	if (type == 'L')
-		return 0;
-	else if (type == 'R') 
-		return 1;
-	else if (type == 'O')
-		return 2;
-	else if (type == 'T')
-		return 3;
-	else
-		throw invalid_argument("Invalid variable type");
-}
-
-char var_type(int x) {
-	int offset = x % 4;
-	if (offset == 0)
-		return 'L';
-	else if (offset == 1)
-		return 'R';
-	else if (offset == 2)
-		return 'O';
-	else if (offset == 3)
-		return 'T';
-	else
-		throw invalid_argument("Modular arithmetic is broken");
-}
-
-int var_idx(int x) {
-	return x / 4;
-}
-
-class Vars {
-
-private:
-
-	// deletes variables with value 0
-	void reduce() {
-		for(map<int, mpz_class>::iterator it = var_map.begin(); it != var_map.end();) {
-			if((it->second % mod) == 0) {
-				it = var_map.erase(it);
-			} else {
-				it++;
-			}
-		}
-	}	
-
-public:
-	map<int, mpz_class> var_map;
-
-
-	void add_var(char type, int idx, int val) {
-		int s = var_offset(type);
-		var_map[4*idx + s] = val % mod;
-	}
-
-	bool has_var(char type, int idx) {
-		int s = var_offset(type);
-		int key = 4*idx + s;
-		return var_map.count(key) != 0;
-	}
-
-	mpz_class get_var(char type, int idx) {
-		int s = var_offset(type);
-		int key = 4*idx + s;
-		return var_map[key];
-	}
-
-	void index_temp_vars(map<int, vector<int>>& index, int pos) {
-		for (auto const&x : var_map) {
-			if (var_type(x.first) == 'T') {
-				int idx = var_idx(x.first);
-				if (index.count(idx) == 0)
-					index[idx] = {pos};
-				else 
-					index[idx].push_back(pos);
-			}
-		}
-	}
-
-	int num_vars() {
-		return var_map.size();
-	}
-
-	void add(Vars& other) {
-		for (auto const&x : other.var_map) {
-			if (var_map.find(x.first) == var_map.end()) {
-				var_map[x.first] = x.second % mod;
-			} else {
-				var_map[x.first] = (var_map[x.first] + x.second) % mod;
-			}
-		}
-		reduce();
-	}
-
-	void sub(Vars& other) {
-		for (auto const&x : other.var_map) {
-			if (var_map.find(x.first) == var_map.end()) {
-				var_map[x.first] = (mod - x.second) % mod;
-			} else {
-				var_map[x.first] = (var_map[x.first] - x.second + mod) % mod;
-			}
-		}
-		reduce();
-	}
-
-	void mul(mpz_class v) {
-		for (auto const&x : var_map) {
-			var_map[x.first] = (var_map[x.first] * v) % mod;
-		}
-	}
-
-	void div(mpz_class v) {
-		for (auto const&x : var_map) {
-			var_map[x.first] = (var_map[x.first] / v) % mod;
-		}
-	}	
-
-	bool is_empty() {
-		return var_map.empty();
-	}
-
-	bool is_zero() {
-		for (auto const&x : var_map) {
-			if (x.second != 0) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/*void to_str() {
-		for (std::map<int,mpz_class>::iterator it=var_map.begin(); it!=var_map.end(); ++it) {
-    		print_var(it->first);
-    		std::cout << " => " << it->second << '\n';
-    	}
-	}*/
-
-	void str(mpz_class constant) {
-		vector<string> terms;
-		for (auto const&e : var_map) {
-			string name = var_str(e.first);
-			mpz_class val = e.second;
-			stringstream s;
-			if (val == 1)
-				terms.push_back(name);
-			else if ((val + 1) % mod == 0)
-				terms.push_back("-" + name);
-			else if (mod - val < 10000) {
-				s << "-" << mod-val << "*" << name;
-				terms.push_back(s.str());
-			} else {
-				s << (val) << "*" << name;
-				terms.push_back(s.str());
-			}
-		}
-		stringstream s;
-	    if (terms.empty() || constant != 0) {
-			if (mod - constant < 10000) {
-				s << "-" << mod-constant;
-				terms.push_back(s.str());
-			}
-			else {
-				s << constant;
-				terms.push_back(s.str());
-			}
-		}
-		
-		for (auto const&x : terms) {
-			cout << x << " + ";
-		}
-	}
-
-	int cost() {
-		int total = 0;
-		map<mpz_class, int> negs;
-		map<mpz_class, int> counts;
-		mpz_class high = 0;
-		for (auto& e : var_map) {
-			mpz_class val = e.second;
-			total += 1;
-			int negate = 0;
-			mpz_class diff = mod - val;
-			if (diff < val) {
-				val = diff;
-				negate = 1;
-			}
-			if (counts.count(val) != 0) {
-				counts[val] += 1;
-				negs[val] += negate;
-			} else {
-				counts[val] = 1;
-				negs[val] = negate;
-			}
-			if (high == 0 || counts[val] > counts[high]) {
-				high = val;
-			}
-		}
-		int plus_one = max(negs[high], counts[high] - negs[high]);
-		int neg_one = counts[high] - plus_one;
-		return COST_SCALAR_MUL * (total - plus_one - neg_one) + COST_SCALAR_NEG * neg_one + COST_SCALAR_COPY;
-	}
-
-	map<int, mpz_class>::iterator vars_begin() {
-		return var_map.begin();
-	}
-
-	map<int, mpz_class>::iterator vars_end() {
-		return var_map.end();
-	}
-};
 
 class Linear {
 
@@ -353,7 +96,7 @@ class Linear {
 	}
 
 	void div(mpz_class v) {
-		v = modinv(v);
+		v = modinv(v, mod);
 		mul(v);
 	}
 
@@ -476,7 +219,7 @@ Linear new_division(Linear& l, Linear& r) {
 	Linear lv = Linear();
 	Linear rv = Linear();
 	Linear ret = Linear();
-	new_mul((l.real * modinv(r.real)) % mod, r.real, ret, rv, lv);
+	new_mul((l.real * modinv(r.real, mod)) % mod, r.real, ret, rv, lv);
 	l.sub(lv);
 	r.sub(rv);
 	eqs.push_back(l);
@@ -779,7 +522,7 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 			c = lin.num_vars();
 			Linear tmp = lin;
 			mpz_class v = lin.get_var(type, idx);
-			mpz_class inv = modinv(v);
+			mpz_class inv = modinv(v, mod);
 			tmp.mul(inv);
 			leq = lin;
 		}
@@ -818,7 +561,7 @@ void pivot_variable(vector<Linear>& eqs_vec, int vnam, bool eliminate = false) {
 				c = eqs_vec[i].num_vars();
 				Linear tmp = eqs_vec[i];
 				mpz_class v = eqs_vec[i].get_var(type, idx);
-				mpz_class inv = modinv(v);
+				mpz_class inv = modinv(v, mod);
 				tmp.mul(inv);
 				leq = eqs_vec[i];
 			}
@@ -959,7 +702,7 @@ void reduce_eqs(int iter) {
 			<< " cost (step " << i << "/" << iter << ")" << endl;
 		}
 		for (int j = 0; j < 4; j++) {
-			int vnam = random_variable();
+			int vnam = random_variable(mul_count);
 			pivot_variable(neweqs, vnam);
 			int neweqs_cost = eqs_cost(neweqs);
 			if (neweqs_cost < cost) {
@@ -1097,7 +840,7 @@ void write_circuit_data(string filename) {
 	write_enc<uint64_t>(bit_count, f);
 	write_enc<uint64_t>(eqs.size(), f);
 
-	map<int, vector<struct eq_val>> WL;
+	/*map<int, vector<struct eq_val>> WL;
 	map<int, vector<struct eq_val>> WR;
 	map<int, vector<struct eq_val>> WO;
 	vector<mpz_class> C;
@@ -1117,9 +860,9 @@ void write_circuit_data(string filename) {
 				throw invalid_argument("unknown type encountered in writing circuit data");
 			}
 		}
-	/*	for (int i = 0; i < (next_mul_count-mul_count); i++) {
+		for (int i = 0; i < (next_mul_count-mul_count); i++) {
 			write_enc<uint32_t>(0, f);
-		}*/
+		}
 		C.push_back(eqs[i].constant);
 	}
 
@@ -1128,7 +871,7 @@ void write_circuit_data(string filename) {
 	write_matrix(WO, f);
 	for (int i = 0; i < C.size(); i++) {
 		write_mpz_enc((mod-C[i]) % mod, f);
-	}
+	}*/
 
 	f.close();
 }
