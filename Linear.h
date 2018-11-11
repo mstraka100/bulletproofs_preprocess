@@ -1,6 +1,10 @@
 #ifndef LINEAR_H
 #define LINEAR_H
 
+#include <map>
+#include <vector>
+#include "Vars.h"
+
 using namespace std;
 
 class Linear {

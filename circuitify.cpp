@@ -291,22 +291,6 @@ vector<Linear> parse_expressions(string s) {
 	return ret;
 }
 
-bool all_const(vector<Linear> v) {
-	for (int i = 0; i < v.size(); i++) {
-		if (!v[i].is_const())
-			return false;
-	}
-	return true;
-}
-
-mpz_class shift_left(mpz_class x, int i) {
-	mpz_t result;
-	mpz_init(result);
-	mp_bitcnt_t bits = i;
-	mpz_mul_2exp(result, x.get_mpz_t(), bits);
-	return mpz_class(result);
-}
-
 typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
 void parse_statement(string& s) {
 	//TODO: strip s
@@ -530,8 +514,6 @@ void eliminate_temps() {
 	std::chrono::duration<double> elapsed = finish - start;
 	cout << "Time to index temp vars: " << elapsed.count() << endl;
 
-
-	
 	vector<int> to_eliminate;
 	for (int i = 0; i < temp_count; i++) {
 		if (i % 250 == 0)
@@ -546,13 +528,11 @@ void eliminate_temps() {
 	cout << "Time to sort to_eliminate: " << elapsed.count() << endl;
 	start = chrono::high_resolution_clock::now();
 
-
 	/*for (int x : to_eliminate) {
 		eqs.erase(eqs.begin()+x);
 	}*/
 
 	eqs = eliminate_indices(eqs, to_eliminate);
-
 
 	finish = chrono::high_resolution_clock::now();
 	elapsed = finish - start;

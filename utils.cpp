@@ -2,7 +2,17 @@
 #include <stdexcept> 
 #include <stdlib.h>
 #include <gmpxx.h>
+#include <vector>
+#include "Linear.h"
 using namespace std;
+
+mpz_class shift_left(mpz_class x, int i) {
+	mpz_t result;
+	mpz_init(result);
+	mp_bitcnt_t bits = i;
+	mpz_mul_2exp(result, x.get_mpz_t(), bits);
+	return mpz_class(result);
+}
 
 mpz_class modinv(mpz_class x, mpz_class mod) {
 	mpz_t ret;
@@ -76,4 +86,12 @@ int random_variable(unsigned int range) {
 	int offset = rand() % 3; //'L', 'R', or 'O'
 	int idx = rand() % range;
 	return 4*idx + offset;
+}
+
+bool all_const(vector<Linear> v) {
+	for (int i = 0; i < v.size(); i++) {
+		if (!v[i].is_const())
+			return false;
+	}
+	return true;
 }

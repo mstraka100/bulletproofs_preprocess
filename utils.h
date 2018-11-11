@@ -1,8 +1,13 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <vector>
+#include "Linear.h"
+
 const mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141_mpz;
 const mpz_class half_mod = (mod+1)/2;
+
+mpz_class shift_left(mpz_class x, int i);
 
 mpz_class modinv(mpz_class x, mpz_class mod);
 
@@ -19,5 +24,7 @@ char var_type(int x);
 int var_idx(int x);
 
 int random_variable(unsigned int range);
+
+bool all_const(vector<Linear> v);
 
 #endif
