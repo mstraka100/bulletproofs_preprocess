@@ -13,7 +13,6 @@ private:
 
 public:
 	std::map<int, mpz_class> var_map;
-	mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141_mpz;
 
 	void add_var(char type, int idx, int val);
 

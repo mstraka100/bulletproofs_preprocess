@@ -19,6 +19,7 @@
 #include <climits>
 #include "utils.h"
 #include "Vars.h"
+#include "Linear.h"
 using namespace std;
 
 #define COST_SCALAR_MUL 5
@@ -29,12 +30,12 @@ const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp2
 const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.circ";
 
 vector<struct mul> mul_data;
+vector<Linear> eqs;
+map<string, Linear> varset;
 
 unsigned int mul_count = 0;
 unsigned int temp_count = 0;
 unsigned int bit_count = 0;
-mpz_class mod = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141_mpz;
-mpz_class half_mod = (mod+1)/2;
 
 regex var_re = regex("[A-Za-z_][0-9a-zA-Z_]*");
 regex secret_re = regex("#(-?[0-9]+)");
@@ -54,87 +55,6 @@ T swap_endian(T u) {
     return dest.u;
 }
 
-class Linear {
-
-	public:
-	mpz_class real;
-	mpz_class constant;
-	Vars vars; 
-
-	void add_var(char type, int idx, int val) {
-		vars.add_var(type, idx, val);
-	}
-
-	bool has_var(char type, int idx) {
-		return vars.has_var(type, idx);
-	}
-
-	int num_vars() {
-		return vars.num_vars();
-	}
-
-	mpz_class get_var(char type, int idx) {
-		return vars.get_var(type, idx);
-	}
-
-	void add(Linear& other) {
-		real = (real + other.real) % mod;
-		constant = (constant + other.constant) % mod;
-		vars.add(other.vars);
-	}
-
-	void sub(Linear& other) {
-		real = (real - other.real + mod) % mod;
-		constant = (constant - other.constant + mod) % mod;
-		vars.sub(other.vars);
-	}
-
-	void mul(mpz_class v) {
-		real = (real * v) % mod;
-		constant = (constant * v) % mod;
-		vars.mul(v);
-	}
-
-	void div(mpz_class v) {
-		v = modinv(v, mod);
-		mul(v);
-	}
-
-	void index_temp_vars(map<int, vector<int>>& index, int pos) {
-		vars.index_temp_vars(index, pos);
-	}
-
-	void to_str() {
-		vars.str(constant);
-	}
-
-	int equation_cost() {
-		return vars.cost();
-	}
-
-	bool is_const() {
-		return vars.is_empty();
-	}
-
-	bool is_zero() {
-		if (constant != 0) {
-			return false;
-		}
-		return vars.is_zero();
-	}
-
-	map<int, mpz_class>::iterator vars_begin() {
-		return vars.vars_begin();
-	}
-
-	map<int, mpz_class>::iterator vars_end() {
-		return vars.vars_end();
-	}
-};
-
-vector<Linear> eqs;
-map<string, Linear> varset;
-
 struct mul {
 	mpz_class l;
 	mpz_class r;
@@ -144,12 +64,6 @@ struct mul {
 struct eq_val {
 	unsigned int eq_num;
 	mpz_class val;
-};
-
-struct multiplication {
-	Linear l;
-	Linear r;
-	Linear o;
 };
 
 void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no)
@@ -181,7 +95,7 @@ void new_const(mpz_class v, Linear& nc) {
 	nc.constant = v;
 }
 
-// currently mutates l and/or r
+// mutates l and/or r
 Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
 	if (l.is_const()) {
 		r.mul(l.constant);
@@ -840,7 +754,7 @@ void write_circuit_data(string filename) {
 	write_enc<uint64_t>(bit_count, f);
 	write_enc<uint64_t>(eqs.size(), f);
 
-	/*map<int, vector<struct eq_val>> WL;
+	map<int, vector<struct eq_val>> WL;
 	map<int, vector<struct eq_val>> WR;
 	map<int, vector<struct eq_val>> WO;
 	vector<mpz_class> C;
@@ -871,7 +785,7 @@ void write_circuit_data(string filename) {
 	write_matrix(WO, f);
 	for (int i = 0; i < C.size(); i++) {
 		write_mpz_enc((mod-C[i]) % mod, f);
-	}*/
+	}
 
 	f.close();
 }
