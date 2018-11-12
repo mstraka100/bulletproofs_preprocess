@@ -20,6 +20,7 @@
 #include "utils.h"
 #include "Vars.h"
 #include "Linear.h"
+#include "parsing.h"
 using namespace std;
 
 #define COST_SCALAR_MUL 5
@@ -31,16 +32,6 @@ const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp
 
 vector<struct mul> mul_data;
 vector<Linear> eqs;
-map<string, Linear> varset;
-
-unsigned int mul_count = 0;
-unsigned int temp_count = 0;
-unsigned int bit_count = 0;
-
-regex var_re = regex("[A-Za-z_][0-9a-zA-Z_]*");
-regex secret_re = regex("#(-?[0-9]+)");
-regex num_re = regex("[0-9]+");
-
 
 template <typename T>
 T swap_endian(T u) {
@@ -55,349 +46,10 @@ T swap_endian(T u) {
     return dest.u;
 }
 
-struct mul {
-	mpz_class l;
-	mpz_class r;
-	mpz_class o;
-};
-
 struct eq_val {
 	unsigned int eq_num;
 	mpz_class val;
 };
-
-void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no)
-{
-	mpz_class o = (l*r) % mod;
-	struct mul m = {l, r, o};
-	mul_data.push_back(m);
-	nl.real = l;
-	nl.constant = 0;
-	nl.add_var('L', mul_count, 1);
-	nr.real = r;
-	nr.constant = 0;
-	nr.add_var('R', mul_count, 1);
-	no.real = o;
-	no.constant = 0;
-	no.add_var('O', mul_count, 1);
-	mul_count += 1;
-}
-
-void new_temp(mpz_class v, Linear& nt) {
-	nt.real = v;
-	nt.constant = 0;
-	nt.add_var('T', temp_count, 1);
-	temp_count += 1;
-}
-
-void new_const(mpz_class v, Linear& nc) {
-	nc.real = v;
-	nc.constant = v;
-}
-
-// mutates l and/or r
-Linear new_multiplication(Linear& l, Linear& r, bool addeqs = true) {
-	if (l.is_const()) {
-		r.mul(l.constant);
-		return r;
-	}
-	if (r.is_const()) {
-		l.mul(r.constant);
-		return l;
-	}
-
-	if (r.constant < l.constant) {
-		Linear tmp = l;
-		l = r;
-		r = tmp;
-	}
-	Linear lv = Linear();
-	Linear rv = Linear();
-	Linear ret = Linear();
-	new_mul(l.real, r.real, lv, rv, ret);
-	l.sub(lv);
-	eqs.push_back(l);
-	if (addeqs){
-		r.sub(rv);
-		eqs.push_back(r);
-	}
-	return ret;
-}
-
-// mutates l and/or r
-Linear new_division(Linear& l, Linear& r) {
-	if (r.is_const()) {
-		l.div(r.constant);
-		return l;
-	}
-	Linear lv = Linear();
-	Linear rv = Linear();
-	Linear ret = Linear();
-	new_mul((l.real * modinv(r.real, mod)) % mod, r.real, ret, rv, lv);
-	l.sub(lv);
-	r.sub(rv);
-	eqs.push_back(l);
-	eqs.push_back(r);
-	return ret;
-}
-
-// mutates l and/or r
-Linear new_xor(Linear& l, Linear& r) {
-	Linear lv = Linear();
-	Linear rv = Linear();
-	Linear mul = Linear();
-	new_multiplication(l, r);
-	l.add(r);
-	mul.mul(2);
-	l.sub(mul);
-	return l;
-}
-
-string clean_expr(string s) {
-	boost::algorithm::trim(s);
-	if (s == "" || s[0] != '(' || s.back() != ')') {
-		return s;
-	}
-	int depth = 1;
-	for (int i = 1; i < s.length()-1; i++) {
-		if (s[i] == '(') {
-			depth += 1;
-		} else if (s[i] == ')') {
-			depth -= 1;
-			if (depth == 0)
-				return s;
-		}
-	}
-	return clean_expr(s.substr(1, s.length()-2));
-}
-
-struct expr {
-	string l;
-	string op;
-	string r;
-};
-
-bool split_expr_binary(string& s, vector<string> ops, struct expr& result) {
-	int depth = 0;
-	for (int i = s.length(); i > 1; i--) {
-		if (s[i-1] == ')')
-			depth += 1;
-		else if (s[i-1] == '(')
-			depth -= 1;
-		else if (depth == 0){
-			for (const string& op: ops) {
-				if (i-op.length() >= 1 && s.substr(i-op.length(), op.length()) == op) {
-					result.l = clean_expr(s.substr(0, i-op.length()));
-					result.r = clean_expr(s.substr(i));
-					result.op = op;
-					return true;			
-				}
-			}
-		}
-	}
-	return false;
-}
-
-Linear parse_expression(string s) {
-	s = clean_expr(s);
-	bool split;
-	if (s == "")
-		throw invalid_argument("Empty expresion");
-	struct expr sp;
-	vector<string> delim = {"^"};
-	split = split_expr_binary(s, delim, sp);
-	if (split) {
-		Linear left = parse_expression(sp.l);
-		Linear right = parse_expression(sp.r);
-		Linear ret = new_xor(left, right);
-		// TODO: assert result correct
-		return ret;
-	}
-	delim = {"+", "-"};
-	split = split_expr_binary(s, delim, sp);
-	if (split) {
-		Linear left = parse_expression(sp.l);
-		Linear right = parse_expression(sp.r);
-		if (sp.op == "+")
-			left.add(right);
-		else
-			left.sub(right);
-		return left;
-	}
-	delim = {"*", "/"};
-	split = split_expr_binary(s, delim, sp);
-	if (split) {
-		Linear left = parse_expression(sp.l);
-		Linear right = parse_expression(sp.r);
-		if (sp.op == "*") {
-			Linear ret = new_multiplication(left, right);
-			return ret;
-		} else {
-			Linear ret = new_division(left, right);
-			return ret;
-		}
-	}
-	if (s.length() > 5 && s.substr(0,5) == "bool(") {
-		Linear ret = parse_expression(s.substr(4));
-		Linear tmp = ret;
-		Linear tmp2 = ret;
-		Linear one;
-		new_const(1, one);
-		tmp2.sub(one);
-		new_multiplication(tmp, tmp2, false);
-		bit_count += 1;
-		return ret;
-	}
-	if (s[0] == '-') {
-		Linear ret = parse_expression(s.substr(1));
-		ret.mul(mod-1);
-		return ret;
-	}
-	if (regex_match(s, var_re)) {
-		if (varset.count(s) != 0) {
-			return varset[s];
-		}
-		else
-			throw invalid_argument("Variable not defined");
-	}
-	if (regex_match(s, secret_re)) {
-		Linear ret;
-		mpz_class mpz_val = mpz_class(s.substr(1));
-		new_temp(mpz_val, ret);
-		return ret;
-	}
-	if (regex_match(s, num_re)) {
-		Linear ret;
-		mpz_class mpz_val = mpz_class(s);
-		new_const(mpz_val, ret);
-		return ret;
-	}
-	throw invalid_argument("Cannot parse expression");
-}
-
-vector<Linear> parse_expressions(string s) {
-	struct expr sp;
-	vector<string> delim = {","};
-	bool split = split_expr_binary(s, delim, sp);
-	if (split) {
-		vector<Linear> l = parse_expressions(sp.l);
-		Linear r = parse_expression(sp.r);
-		l.push_back(r);
-		return l;
-	}
-	Linear ret_val = parse_expression(s);
-	vector<Linear> ret;
-	ret.push_back(ret_val);
-	return ret;
-}
-
-typedef boost::tokenizer<boost::char_separator<char>> tokenizer;
-void parse_statement(string& s) {
-	//TODO: strip s
-	if (s.length() > 6 && s.substr(0,6) == "debug "){
-		Linear lin = parse_expression(s.substr(6));
-		cout << "DEBUG " << s.substr(6) << ": " << lin.real << endl;
-		lin.to_str();
-		cout << "const => " << lin.constant << endl;
-		return;
-	}
-	vector<string> assn_ops = {":=", "=:", "==", "=", "=?"};
-	struct expr sp;
-	bool match = split_expr_binary(s, assn_ops, sp);
-	if (match) {
-		string left = sp.l;
-		string op = sp.op;
-		string right = sp.r;
-
-		if (op == ":=") {
-			vector<string> bits;
-			boost::char_separator<char> sep{","};
-  			tokenizer tok{left, sep};
-			for (const auto &b : tok) {
-				bits.push_back(b);
-			}
-			//TODO: Check bit names are valid
-			Linear val = parse_expression(right);
-			//TODO: assert bits length <= 256
-			vector<Linear> bitvars;
-			if (val.is_const()) {
-				for (int i = 0; i < bits.size(); i++) {
-					Linear l;
-					mpz_class v = (val.real >> i) & 1;
-					new_const(v,l);
-					bitvars.push_back(l);
-				} 
-			} else {
-				for (int i = 0; i < bits.size(); i++) {
-					Linear l;
-					mpz_class v = (val.real >> i) & 1;
-					new_temp(v,l);
-					bitvars.push_back(l);
-					Linear tmp = l;
-					Linear tmp2 = l;
-					Linear one;
-					new_const(1, one);
-					tmp2.sub(one);
-					Linear eq = new_multiplication(tmp, tmp2);
-					eqs.push_back(eq);
-					tmp = l;
-					mpz_class shifted_i = shift_left(1, i);
-					tmp.mul(shifted_i);
-					val.sub(tmp);
-				}
-				eqs.push_back(val);
-			}
-			for (int i = 0; i < bits.size(); i++) {
-				varset[bits[i]] = bitvars[i];
-			}
-		} else if (op == "=:") {
-			vector<Linear> bits;
-			bits = parse_expressions(right);
-			// TODO: Check varible name on left valid, len of bits <=256
-			mpz_class real = 0;
-			for (int i = 0; i < bits.size(); i++) {
-				//TODO: Assert bit either 0 or 1
-				real = real + bits[i].real * (1 << i);
-				if (all_const(bits)) {
-					Linear val;
-					new_const(real, val);
-					varset[left] = val;
-				} else {
-					Linear val;
-					new_temp(real, val);
-					varset[left] = val;
-					for (int i = 0; i < bits.size(); i++) {
-						Linear tmp = bits[i];
-						mpz_class shifted_i = shift_left(1, i);
-						tmp.mul(shifted_i);
-						val.sub(tmp);
-					}
-					eqs.push_back(val);
-				}
-			}
-		} else if (op == "=") {
-			//TODO: check left is proper variable name
-			Linear ex = parse_expression(right);
-			varset[left] = ex;
-		} else if (op == "==") {
-			Linear l = parse_expression(left);
-			Linear r = parse_expression(right);
-			l.sub(r);
-			cout << "checking equality" << endl;
-			cout << l.real << " " << r.real << endl;
-			//TODO: check l.val == r.val
-			eqs.push_back(l);
-			l.to_str();
-		} else if (op == "=?") {
-			Linear ex = parse_expression(right);
-			int is_zero = ex.is_zero();
-			Linear lin;
-			lin.real = is_zero;
-			lin.constant = is_zero;
-			varset[left] = lin;
-		}
-	}
-}
 
 
 void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vector<int>& to_eliminate, bool eliminate = false) {
@@ -507,7 +159,7 @@ vector<Linear> eliminate_indices(vector<Linear> vec, vector<int> to_eliminate) {
 	return result;
 }
 
-void eliminate_temps() {
+void eliminate_temps(struct counts& cnts) {
 	auto start = chrono::high_resolution_clock::now();
 	map<int, vector<int>> index = index_temp_vars();
 	auto finish = chrono::high_resolution_clock::now();
@@ -515,9 +167,9 @@ void eliminate_temps() {
 	cout << "Time to index temp vars: " << elapsed.count() << endl;
 
 	vector<int> to_eliminate;
-	for (int i = 0; i < temp_count; i++) {
+	for (int i = 0; i < cnts.temp_count; i++) {
 		if (i % 250 == 0)
-			cout << "temp_eliminated: " << i << "/" << temp_count << endl;
+			cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
 		pivot_variable_temp('T', i, index, to_eliminate, true);
 	}
 	cout << "eliminating" << endl;
@@ -541,8 +193,8 @@ void eliminate_temps() {
 
 }
 
-void print_andytoshi_format() {
-	printf("%d,0,%d,%lu; ", mul_count, bit_count, eqs.size());
+void print_andytoshi_format(struct counts& cnts) {
+	printf("%d,0,%d,%lu; ", cnts.mul_count, cnts.bit_count, eqs.size());
 	for (int i = 0; i < eqs.size(); i++) {
 		int pos = 0;
 		for (auto e: eqs[i].vars.var_map) {
@@ -584,7 +236,7 @@ int eqs_cost(vector<Linear>& eqs_vec) {
 	return cost;
 }
 
-void reduce_eqs(int iter) {
+void reduce_eqs(int iter, struct counts& cnts) {
 	auto start = chrono::high_resolution_clock::now();
 	int cost = eqs_cost(eqs);
 	for (int i = 0; i < iter; i++) {
@@ -596,7 +248,7 @@ void reduce_eqs(int iter) {
 			<< " cost (step " << i << "/" << iter << ")" << endl;
 		}
 		for (int j = 0; j < 4; j++) {
-			int vnam = random_variable(mul_count);
+			int vnam = random_variable(cnts.mul_count);
 			pivot_variable(neweqs, vnam);
 			int neweqs_cost = eqs_cost(neweqs);
 			if (neweqs_cost < cost) {
@@ -691,13 +343,13 @@ void write_mpz_enc(mpz_class val, ofstream& f) {
 	f << split_into_words(encode_scalar_hex(val), 0, false) << " ";
 }
 
-void write_secret_data(string filename) {
+void write_secret_data(string filename, struct counts& cnts) {
 	ofstream f;
 	f.open(filename);
 	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates
 	write_enc<uint32_t>(1, f);
 	write_enc<uint32_t>(0, f);
-	write_enc<uint64_t>(mul_count, f);
+	write_enc<uint64_t>(cnts.mul_count, f);
 
 	for (int i = 0; i < mul_data.size(); i++) {
 		write_mpz_enc(mul_data[i].l, f);
@@ -723,15 +375,15 @@ void write_matrix(map<int, vector<struct eq_val>>& mat, ofstream& f) {
 	}
 }
 
-void write_circuit_data(string filename) {
+void write_circuit_data(string filename, struct counts& cnts) {
 	ofstream f;
 	f.open(filename);
-	unsigned int next_mul_count = next_power_of_two(mul_count);
+	unsigned int next_mul_count = next_power_of_two(cnts.mul_count);
 	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates, 8 bytes n_bits, 8 bytes n_constraints
 	write_enc<uint32_t>(1, f);
 	write_enc<uint32_t>(0, f);
 	write_enc<uint64_t>(next_mul_count, f);
-	write_enc<uint64_t>(bit_count, f);
+	write_enc<uint64_t>(cnts.bit_count, f);
 	write_enc<uint64_t>(eqs.size(), f);
 
 	map<int, vector<struct eq_val>> WL;
@@ -754,7 +406,7 @@ void write_circuit_data(string filename) {
 				throw invalid_argument("unknown type encountered in writing circuit data");
 			}
 		}
-		for (int i = 0; i < (next_mul_count-mul_count); i++) {
+		for (int i = 0; i < (next_mul_count-cnts.mul_count); i++) {
 			write_enc<uint32_t>(0, f);
 		}
 		C.push_back(eqs[i].constant);
@@ -772,11 +424,13 @@ void write_circuit_data(string filename) {
 
 int main() {
 
+	struct counts cnts = {0, 0, 0};
+
 	string input_line;
 	auto start = chrono::high_resolution_clock::now();
 	while (getline(cin, input_line)) {
 		cout << "input line: " << input_line << endl;
-		parse_statement(input_line);
+		parse_statement(eqs, input_line, cnts, mul_data);
 	}
 	auto finish = chrono::high_resolution_clock::now();
 	std::chrono::duration<double> elapsed = finish - start;
@@ -785,10 +439,10 @@ int main() {
 
 	//print_andytoshi_format();
 	
-	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
+	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", cnts.mul_count, cnts.temp_count, eqs.size(), eqs_cost(eqs));
 
 	start = chrono::high_resolution_clock::now();
-	eliminate_temps();
+	eliminate_temps(cnts);
 	finish = chrono::high_resolution_clock::now();
 	elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
@@ -816,8 +470,8 @@ int main() {
 		//C.push_back(eqs[i].constant)
 	}*/
 
-	write_secret_data(SECRET_FILENAME);
-	write_circuit_data(CIRCUIT_FILENAME);
+	write_secret_data(SECRET_FILENAME, cnts);
+	write_circuit_data(CIRCUIT_FILENAME, cnts);
 
 	/*ofstream myfile;
 	myfile.open("./testfile");
