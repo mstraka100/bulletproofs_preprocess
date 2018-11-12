@@ -17,15 +17,12 @@
 #include <fstream>
 #include <bitset>
 #include <climits>
+#include <stdio.h>
 #include "utils.h"
 #include "Vars.h"
 #include "Linear.h"
 #include "parsing.h"
 using namespace std;
-
-#define COST_SCALAR_MUL 5
-#define COST_SCALAR_NEG 2
-#define COST_SCALAR_COPY 1
 
 const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.assn";
 const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.circ";
@@ -298,6 +295,33 @@ string encode_scalar_hex(mpz_class val) {
 	return result;
 }
 
+vector<char> encode_scalar_to_hex(mpz_class val) {
+	vector<char> result;
+	if (val < 0)
+		throw invalid_argument("encode_scalar_hex received negative value");
+
+	size_t prefix;
+	if (val > half_mod) {
+		prefix = 0x80;
+		val = mod - val;
+	} else {
+		prefix = 0x00;
+	}
+	int count = 0;
+	while (val > 0) {
+		mpz_class x = val % 0x100;
+		result.push_back(x.get_ui());
+		cout << result[0] << endl;
+		val = val >> 8;
+		count += 1;
+	}
+	//string result = oss.str();
+	prefix = prefix | count;
+	result.insert(result.begin(), prefix);
+
+	return result;
+}
+
 // each word is 2 bytes
 string split_into_words(string hex, int n_words, bool use_padding = true) {
 	string result = "";
@@ -340,51 +364,103 @@ void write_enc(T val, ofstream& f) {
 
 // does not pad
 void write_mpz_enc(mpz_class val, ofstream& f) {
-	f << split_into_words(encode_scalar_hex(val), 0, false) << " ";
+	vector<char> vec = encode_scalar_to_hex(val);
+	cout << "printing chars in encoding: " << endl;
+	cout << vec[0] << endl;
+	for (auto x : vec) {
+		cout << x << endl;
+	}
+	f.write(&vec[0], vec.size());
+	//f << split_into_words(encode_scalar_hex(val), 0, false) << " ";
 }
+
+template <typename T>
+void write_enc_to(T val, size_t width, ofstream& f) {
+	char buf[width];
+	size_t i;
+    for (i = 0; i < width; i++) {
+         buf[i] = val;
+         val >>= 8;
+    }
+	f.write(buf, width);
+}
+
+/*void secp256k1_encode(unsigned char *buf, size_t width, T n) {
+     size_t i;
+     for (i = 0; i < width; i++) {
+         buf[i] = n;
+         n >>= 8;
+     }
+}*/
 
 void write_secret_data(string filename, struct counts& cnts) {
 	ofstream f;
 	f.open(filename);
 	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates
-	write_enc<uint32_t>(1, f);
-	write_enc<uint32_t>(0, f);
-	write_enc<uint64_t>(cnts.mul_count, f);
+	//write_enc<uint32_t>(1, f);
+	//write_enc<uint32_t>(0, f);
+	//write_enc<uint64_t>(cnts.mul_count, f);
+
+	/*fputc(1, f);
+	fputc(0, f);
+	fputc(0, f);
+	fputc(0, f);*/
+	//char data[] = {1,0,0,0};
+	//f.write(data, 4);
+	write_enc_to<uint16_t>(1, 4, f);
+	write_enc_to<uint16_t>(0, 4, f);
+	write_enc_to<uint64_t>(cnts.mul_count, 8, f);
 
 	for (int i = 0; i < mul_data.size(); i++) {
+		cout << "left: " << mul_data[i].l << endl;
 		write_mpz_enc(mul_data[i].l, f);
 	}
 	for (int i = 0; i < mul_data.size(); i++) {
+		cout << "right: " << mul_data[i].r << endl;
 		write_mpz_enc(mul_data[i].r, f);
 	}
 	for (int i = 0; i < mul_data.size(); i++) {
+		cout << "out: " << mul_data[i].o << endl;
 		write_mpz_enc(mul_data[i].o, f);
 	}
 
 	f.close();
 }
 
-void write_matrix(map<int, vector<struct eq_val>>& mat, ofstream& f) {
+void write_matrix(map<int, vector<struct eq_val>>& mat, size_t metadata_len, ofstream& f) {
 	for (auto& e : mat) {
 		vector<struct eq_val> col = e.second;
-		write_enc<uint32_t>(col.size(), f);
+		write_enc_to<uint64_t>(col.size(), metadata_len, f);
 		for (int i = 0; i < col.size(); i++) {
-			write_enc<uint32_t>(col[i].eq_num, f);
+			write_enc_to<uint64_t>(col[i].eq_num, metadata_len, f);
 			write_mpz_enc(col[i].val, f);
 		}
 	}
 }
 
+// returns number of bits matrix value metadata should be encoded as
+size_t encoding_length(size_t n_elems) {
+	if (n_elems <= 255)
+		return 2;
+	else if (n_elems <= (32767 * 2 + 1))
+		return 4;
+	else
+		return 8;
+}
+
 void write_circuit_data(string filename, struct counts& cnts) {
 	ofstream f;
 	f.open(filename);
+	size_t metadata_len = encoding_length(eqs.size());
 	unsigned int next_mul_count = next_power_of_two(cnts.mul_count);
 	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates, 8 bytes n_bits, 8 bytes n_constraints
-	write_enc<uint32_t>(1, f);
-	write_enc<uint32_t>(0, f);
-	write_enc<uint64_t>(next_mul_count, f);
-	write_enc<uint64_t>(cnts.bit_count, f);
-	write_enc<uint64_t>(eqs.size(), f);
+
+	write_enc_to<uint16_t>(1, 4, f);
+	write_enc_to<uint16_t>(0, 4, f);
+
+	write_enc_to<uint64_t>(next_mul_count, 8, f);
+	write_enc_to<uint64_t>(cnts.bit_count, 8, f);
+	write_enc_to<uint64_t>(eqs.size(), 8, f);
 
 	map<int, vector<struct eq_val>> WL;
 	map<int, vector<struct eq_val>> WR;
@@ -407,14 +483,14 @@ void write_circuit_data(string filename, struct counts& cnts) {
 			}
 		}
 		for (int i = 0; i < (next_mul_count-cnts.mul_count); i++) {
-			write_enc<uint32_t>(0, f);
+			write_enc_to<uint32_t>(0, metadata_len, f);
 		}
 		C.push_back(eqs[i].constant);
 	}
 
-	write_matrix(WL, f);
-	write_matrix(WR, f);
-	write_matrix(WO, f);
+	write_matrix(WL, metadata_len, f);
+	write_matrix(WR, metadata_len, f);
+	write_matrix(WO, metadata_len, f);
 	for (int i = 0; i < C.size(); i++) {
 		write_mpz_enc((mod-C[i]) % mod, f);
 	}
