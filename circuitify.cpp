@@ -311,7 +311,6 @@ vector<char> encode_scalar_to_hex(mpz_class val) {
 	while (val > 0) {
 		mpz_class x = val % 0x100;
 		result.push_back(x.get_ui());
-		cout << result[0] << endl;
 		val = val >> 8;
 		count += 1;
 	}
@@ -365,11 +364,6 @@ void write_enc(T val, ofstream& f) {
 // does not pad
 void write_mpz_enc(mpz_class val, ofstream& f) {
 	vector<char> vec = encode_scalar_to_hex(val);
-	cout << "printing chars in encoding: " << endl;
-	cout << vec[0] << endl;
-	for (auto x : vec) {
-		cout << x << endl;
-	}
 	f.write(&vec[0], vec.size());
 	//f << split_into_words(encode_scalar_hex(val), 0, false) << " ";
 }
@@ -412,15 +406,15 @@ void write_secret_data(string filename, struct counts& cnts) {
 	write_enc_to<uint64_t>(cnts.mul_count, 8, f);
 
 	for (int i = 0; i < mul_data.size(); i++) {
-		cout << "left: " << mul_data[i].l << endl;
+		//cout << "left: " << mul_data[i].l << endl;
 		write_mpz_enc(mul_data[i].l, f);
 	}
 	for (int i = 0; i < mul_data.size(); i++) {
-		cout << "right: " << mul_data[i].r << endl;
+		//cout << "right: " << mul_data[i].r << endl;
 		write_mpz_enc(mul_data[i].r, f);
 	}
 	for (int i = 0; i < mul_data.size(); i++) {
-		cout << "out: " << mul_data[i].o << endl;
+		//cout << "out: " << mul_data[i].o << endl;
 		write_mpz_enc(mul_data[i].o, f);
 	}
 
@@ -438,14 +432,14 @@ void write_matrix(map<int, vector<struct eq_val>>& mat, size_t metadata_len, ofs
 	}
 }
 
-// returns number of bits matrix value metadata should be encoded as
+// returns number of bytes matrix value metadata should be encoded as
 size_t encoding_length(size_t n_elems) {
 	if (n_elems <= 255)
-		return 2;
+		return 1;
 	else if (n_elems <= (32767 * 2 + 1))
-		return 4;
+		return 2;
 	else
-		return 8;
+		return 4;
 }
 
 void write_circuit_data(string filename, struct counts& cnts) {
@@ -465,6 +459,12 @@ void write_circuit_data(string filename, struct counts& cnts) {
 	map<int, vector<struct eq_val>> WL;
 	map<int, vector<struct eq_val>> WR;
 	map<int, vector<struct eq_val>> WO;
+
+	for (size_t i = 0; i < cnts.mul_count; i++) {
+		WL[i] = vector<struct eq_val>();
+		WR[i] = vector<struct eq_val>();
+		WO[i] = vector<struct eq_val>();
+	}
 	vector<mpz_class> C;
 	for (unsigned int i = 0; i < eqs.size(); i++) {
 		for (auto it = eqs[i].vars_begin(); it != eqs[i].vars_end(); ++it) {
