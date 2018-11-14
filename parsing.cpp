@@ -2,6 +2,7 @@
 #include <string>
 #include <boost/algorithm/string.hpp>
 #include <boost/tokenizer.hpp>
+#include <assert.h>
 #include "parsing.h"
 #include "Linear.h"
 #include "ops.h"
@@ -89,9 +90,11 @@ Linear parse_expression(string s, struct counts& cnts, vector<Linear>& eqs, vect
 		Linear right = parse_expression(sp.r, cnts, eqs, mul_data);
 		if (sp.op == "*") {
 			Linear ret = new_multiplication(left, right, cnts, eqs, mul_data);
+		//	assert((ret.real%mod) == ((left.real * right.real)%mod));
 			return ret;
 		} else {
 			Linear ret = new_division(left, right, cnts, eqs, mul_data);
+		//	assert(left.real == ((ret.real * right.real)%mod));
 			return ret;
 		}
 	}
@@ -177,6 +180,7 @@ void parse_statement(vector<Linear>& eqs, string& s, struct counts& cnts, vector
 			//TODO: Check bit names are valid
 			Linear val = parse_expression(right, cnts, eqs, mul_data);
 			//TODO: assert bits length <= 256
+			assert(bits.size() <= 256);
 			vector<Linear> bitvars;
 			if (val.is_const()) {
 				for (int i = 0; i < bits.size(); i++) {
@@ -212,6 +216,7 @@ void parse_statement(vector<Linear>& eqs, string& s, struct counts& cnts, vector
 			vector<Linear> bits;
 			bits = parse_expressions(right, cnts, eqs, mul_data);
 			// TODO: Check varible name on left valid, len of bits <=256
+			assert(bits.size() <= 256);
 			mpz_class real = 0;
 			for (int i = 0; i < bits.size(); i++) {
 				//TODO: Assert bit either 0 or 1
@@ -242,7 +247,7 @@ void parse_statement(vector<Linear>& eqs, string& s, struct counts& cnts, vector
 			Linear r = parse_expression(right, cnts, eqs, mul_data);
 			l.sub(r);
 			cout << "checking equality: " << endl;
-			cout << l.real << "==" << r.real << endl;
+		//	cout << l.real << "==" << r.real << endl;
 			//TODO: check l.val == r.val
 			eqs.push_back(l);
 			l.to_str();

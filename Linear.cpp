@@ -65,6 +65,14 @@
 		return vars.is_zero();
 	}
 
+	bool Linear::has_temp_var() {
+		return vars.has_temp_var();
+	}
+
+	bool Linear::has_several_temps() {
+		return vars.has_several_temps();
+	}
+
 	map<int, mpz_class>::iterator Linear::vars_begin() {
 		return vars.vars_begin();
 	}

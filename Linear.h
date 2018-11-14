@@ -40,6 +40,10 @@ public:
 
 	bool is_zero();
 
+	bool has_temp_var();
+
+	bool has_several_temps();
+
 	map<int, mpz_class>::iterator vars_begin();
 
 	map<int, mpz_class>::iterator vars_end();

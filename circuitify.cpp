@@ -18,14 +18,15 @@
 #include <bitset>
 #include <climits>
 #include <stdio.h>
+#include <assert.h>
 #include "utils.h"
 #include "Vars.h"
 #include "Linear.h"
 #include "parsing.h"
 using namespace std;
 
-const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.assn";
-const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA2cpp.circ";
+const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/small.assn";
+const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/small.circ";
 
 vector<struct mul> mul_data;
 vector<Linear> eqs;
@@ -53,12 +54,17 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 	int c = 0;
 	int cc = 0;
 	int low = -1;
+	int low_idx;
 	Linear leq;
 	vector<int> vec;
 	vector<int> temp_eqs = index[idx];
+	cout << "eliminating index: " << idx << endl;
+
+	map<int, vector<int>> next_index;
+
 //	cout << "Size: " << temp_eqs.size() << endl;
 	for (int i = 0; i < temp_eqs.size(); i++) {
-		/*if (find(to_eliminate.begin(), to_eliminate.end(), temp_eqs[i]) != to_eliminate.end()) {
+	/*	if (find(to_eliminate.begin(), to_eliminate.end(), temp_eqs[i]) != to_eliminate.end()) {
 			continue;
 		}*/
 		Linear &lin = eqs[temp_eqs[i]];
@@ -66,6 +72,7 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 		cc += 1;
 		if (low == -1 || c > lin.num_vars()) {
 			low = temp_eqs[i];
+			low_idx = i;
 			c = lin.num_vars();
 			Linear tmp = lin;
 			mpz_class v = lin.get_var(type, idx);
@@ -74,12 +81,20 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 			leq = lin;
 		}
 	}
+
 	if (cc > 1) {
 		for (auto i: vec) {
 			if (i != low) {
+				bool to_index = !eqs[i].has_several_temps();
 				Linear tmp = leq;
 				tmp.mul(eqs[i].get_var(type, idx));
 				eqs[i].sub(tmp);
+	//			cout << " about to index" << endl;
+				if (to_index) {
+					eqs[i].index_temp_vars(index, i);
+					cout << "indexed: " << i << endl;
+				}
+			//	cout << "indexed at: " << i << endl;
 			}
 		}
 	}
@@ -87,6 +102,14 @@ void pivot_variable_temp(char type, int idx, map<int, vector<int>>& index, vecto
 	//	if (find(to_eliminate.begin(), to_eliminate.end(), low) == to_eliminate.end())
 			to_eliminate.push_back(low);
 	}
+/*	cout << "size befre" << index.size() << endl;
+	cout << " about to deelte" << endl;
+	auto it = index.find(idx);
+	index.erase(it, index.end());
+	cout << "deleted" << endl;
+	cout << "size: " << index.empty() << endl;*/
+//	auto it = index.find(idx);
+	index.erase(idx);
 }
 
 void pivot_variable(vector<Linear>& eqs_vec, int vnam, bool eliminate = false) {
@@ -157,36 +180,54 @@ vector<Linear> eliminate_indices(vector<Linear> vec, vector<int> to_eliminate) {
 }
 
 void eliminate_temps(struct counts& cnts) {
-	auto start = chrono::high_resolution_clock::now();
+//	auto start = chrono::high_resolution_clock::now();
 	map<int, vector<int>> index = index_temp_vars();
-	auto finish = chrono::high_resolution_clock::now();
-	std::chrono::duration<double> elapsed = finish - start;
-	cout << "Time to index temp vars: " << elapsed.count() << endl;
+	cout << "size of index: " << index.size() << endl;
+//	auto finish = chrono::high_resolution_clock::now();
+//	std::chrono::duration<double> elapsed = finish - start;
+//	cout << "Time to index temp vars: " << elapsed.count() << endl;
 
-	vector<int> to_eliminate;
-	for (int i = 0; i < cnts.temp_count; i++) {
-		if (i % 250 == 0)
-			cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
-		pivot_variable_temp('T', i, index, to_eliminate, true);
-	}
-	cout << "eliminating" << endl;
-	start = chrono::high_resolution_clock::now();
-	sort(to_eliminate.begin(), to_eliminate.end(), greater<int>());
-	finish = chrono::high_resolution_clock::now();
-	elapsed = finish - start;
-	cout << "Time to sort to_eliminate: " << elapsed.count() << endl;
-	start = chrono::high_resolution_clock::now();
-
-	/*for (int x : to_eliminate) {
-		eqs.erase(eqs.begin()+x);
+	/*cout << "printing temp index: " << endl;
+	for (auto x = index.begin(); x != index.end(); x++) {
+		int idx = x->first;
+		cout << "var: " << idx << endl;
+		for (auto y : x->second) {
+			cout << y << endl;
+		}
 	}*/
 
-	eqs = eliminate_indices(eqs, to_eliminate);
+	while (!index.empty()) {
+		cout << "starting loop" << endl;
+		cout << "size of index: " << index.size() << endl;
+		vector<int> to_eliminate;
+		for (int i = 0; i < cnts.temp_count; i++) {
+			if (i % 250 == 0)
+				cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
+			pivot_variable_temp('T', i, index, to_eliminate, true);
+		}
+	//	cout << "eliminating" << endl;
+	//	start = chrono::high_resolution_clock::now();
+		sort(to_eliminate.begin(), to_eliminate.end(), greater<int>());
+	/*	cout << "printing to_eliminate: " << index.size() << endl;
+		for (int i = 0; i < to_eliminate.size(); i++) {
+			cout << to_eliminate[i] << endl;
+		}*/
+	//	finish = chrono::high_resolution_clock::now();
+	//	elapsed = finish - start;
+	//	cout << "Time to sort to_eliminate: " << elapsed.count() << endl;
+	//	start = chrono::high_resolution_clock::now();
 
-	finish = chrono::high_resolution_clock::now();
-	elapsed = finish - start;
-	cout << "Time to delete temp vars: " << elapsed.count() << endl;
+		/*for (int x : to_eliminate) {
+			eqs.erase(eqs.begin()+x);
+		}*/
 
+		eqs = eliminate_indices(eqs, to_eliminate);
+
+
+//	finish = chrono::high_resolution_clock::now();
+//	elapsed = finish - start;
+//	cout << "Time to delete temp vars: " << elapsed.count() << endl;
+	}
 
 }
 
@@ -297,8 +338,8 @@ string encode_scalar_hex(mpz_class val) {
 
 vector<char> encode_scalar_to_hex(mpz_class val) {
 	vector<char> result;
-	if (val < 0)
-		throw invalid_argument("encode_scalar_hex received negative value");
+	//if (val < 0)
+	//	throw invalid_argument("encode_scalar_hex received negative value");
 
 	size_t prefix;
 	if (val > half_mod) {
@@ -479,6 +520,9 @@ void write_circuit_data(string filename, struct counts& cnts) {
 			} else if (type == 'O') {
 				WO[idx].push_back(ev);
 			} else {
+				cout << "index: " + to_string(i) << endl;
+				cout << "type " + to_string(type) + "encountered" << endl;
+			//	eqs[i].to_str();
 				throw invalid_argument("unknown type encountered in writing circuit data");
 			}
 		}
@@ -498,6 +542,15 @@ void write_circuit_data(string filename, struct counts& cnts) {
 	f.close();
 }
 
+bool has_temp_vars(vector<Linear>& eqs) {
+	for (int i = 0; i < eqs.size(); i++) {
+		if (eqs[i].has_temp_var()) {
+			return true;
+		}
+	}
+	return false;
+}
+
 int main() {
 
 	struct counts cnts = {0, 0, 0};
@@ -513,18 +566,23 @@ int main() {
 	cout << endl << "Time to parse input: " << elapsed.count() << endl;
 
 
-	//print_andytoshi_format();
+//	print_andytoshi_format(cnts);
 	
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", cnts.mul_count, cnts.temp_count, eqs.size(), eqs_cost(eqs));
 
 	start = chrono::high_resolution_clock::now();
-	eliminate_temps(cnts);
+	int count = 0;
+//	while (has_temp_vars(eqs)) {
+		eliminate_temps(cnts);
+		cout << "loop: " << count << endl;
+		count += 1;
+//	}
 	finish = chrono::high_resolution_clock::now();
 	elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
 
 
-	//print_andytoshi_format();
+	//print_andytoshi_format(cnts);
 
 /*	start = chrono::high_resolution_clock::now();
 	reduce_eqs(mul_count);

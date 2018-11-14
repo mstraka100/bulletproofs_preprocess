@@ -1,3 +1,4 @@
+#include <assert.h>
 #include "ops.h"
 #include "utils.h"
 
@@ -5,10 +6,10 @@ void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no, struc
 	mpz_class o = (l*r) % mod;
 	struct mul m = {l, r, o};
 	mul_data.push_back(m);
-	nl.real = l;
+	nl.real = l % mod;
 	nl.constant = 0;
 	nl.add_var('L', cnts.mul_count, 1);
-	nr.real = r;
+	nr.real = r % mod;
 	nr.constant = 0;
 	nr.add_var('R', cnts.mul_count, 1);
 	no.real = o;
@@ -18,15 +19,15 @@ void new_mul(mpz_class l, mpz_class r, Linear& nl, Linear& nr, Linear& no, struc
 }
 
 void new_temp(mpz_class v, Linear& nt, struct counts& cnts) {
-	nt.real = v;
+	nt.real = v % mod;
 	nt.constant = 0;
 	nt.add_var('T', cnts.temp_count, 1);
 	cnts.temp_count += 1;
 }
 
 void new_const(mpz_class v, Linear& nc) {
-	nc.real = v;
-	nc.constant = v;
+	nc.real = v % mod;
+	nc.constant = v % mod;
 }
 
 // mutates l and/or r
@@ -49,6 +50,8 @@ Linear new_multiplication(Linear& l, Linear& r, struct counts& cnts, vector<Line
 	Linear rv = Linear();
 	Linear ret = Linear();
 	new_mul(l.real, r.real, lv, rv, ret, cnts, mul_data);
+	assert(l.real == lv.real);
+	assert(r.real == rv.real);
 	l.sub(lv);
 	eqs.push_back(l);
 	if (addeqs){
@@ -68,6 +71,8 @@ Linear new_division(Linear& l, Linear& r, struct counts& cnts, vector<Linear>& e
 	Linear rv = Linear();
 	Linear ret = Linear();
 	new_mul((l.real * modinv(r.real, mod)) % mod, r.real, ret, rv, lv, cnts, mul_data);
+	assert(l.real == lv.real);
+	assert(r.real == rv.real);
 	l.sub(lv);
 	r.sub(rv);
 	eqs.push_back(l);

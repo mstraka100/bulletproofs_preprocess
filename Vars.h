@@ -36,6 +36,10 @@ public:
 
 	bool is_zero();
 
+	bool has_temp_var();
+
+	bool has_several_temps();
+
 	void str(mpz_class constant);
 
 	int cost();

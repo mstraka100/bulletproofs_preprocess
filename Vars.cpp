@@ -42,6 +42,7 @@ mpz_class Vars::get_var(char type, int idx) {
 }
 
 void Vars::index_temp_vars(map<int, vector<int>>& index, int pos) {
+	reduce();
 	for (auto const&x : var_map) {
 		if (var_type(x.first) == 'T') {
 			int idx = var_idx(x.first);
@@ -102,6 +103,27 @@ bool Vars::is_zero() {
 		}
 	}
 	return true;
+}
+
+bool Vars::has_temp_var() {
+	for (auto const&x : var_map) {
+		if (var_type(x.first) == 'T') {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool Vars::has_several_temps() {
+	size_t count = 0;
+	for (auto const&x : var_map) {
+		if (var_type(x.first) == 'T') {
+			count += 1;
+			if (count == 2)
+				return true;
+		}
+	}
+	return false;
 }
 
 void Vars::str(mpz_class constant) {
