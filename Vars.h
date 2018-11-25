@@ -22,7 +22,7 @@ public:
 
 	mpz_class get_var(char type, int idx);
 
-	void index_temp_vars(std::map<int, std::vector<Linear*>>& index, Linear& eq, bool check_dups = false);
+	void index_temp_vars(std::map<int, std::vector<int>>& index, int i, Linear& eq, bool check_dups = false);
 
 	int num_vars();
 

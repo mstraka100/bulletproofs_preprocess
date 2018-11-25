@@ -37,7 +37,7 @@ struct eq_val {
 /* Given int idx, eliminates the variable of the form T<idx> from eqs. Marks for future removal by adding to to_eliminate. 
  * Uses 
  * TODO: Change index to map to pointers, removes need to to_eliminate vector */
-void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<Linear*>>& index, bool eliminate = false) {
+void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& index, bool eliminate = false) {
 	if (index.count(idx) == 0)
 		return;
 
@@ -46,24 +46,24 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<Linear*>>
 	int cc = 0;
 	int low = -1;
 	int low_idx;
-	Linear* leq;
-	vector<Linear*> vec;
+	int leq;
+	vector<int> vec;
 
-	vector<Linear*>& temp_eqs = index[idx];
+	vector<int>& temp_eqs = index[idx];
 	for (int i = 0; i < temp_eqs.size(); i++) {
-		Linear *lin = temp_eqs[i];
+		int lin = temp_eqs[i];
 		vec.push_back(temp_eqs[i]);
 		cc += 1;
 
 	//	cout << "about to check elimination: " << temp_eqs.size() << endl;
-		if (lin->eliminated)
+		if (eqs[lin].eliminated)
 			continue;
 	//	cout << "checked elimination" << endl;
-		if (low == -1 || c > lin->num_vars()) {
+		if (low == -1 || c > eqs[lin].num_vars()) {
 			low_idx = i;
-			c = lin->num_vars();
-			Linear tmp = *lin;
-			mpz_class v = lin->get_var('T', idx);
+			c = eqs[lin].num_vars();
+			Linear tmp = eqs[lin];
+			mpz_class v = eqs[lin].get_var('T', idx);
 			mpz_class inv = modinv(v, mod);
 			tmp.mul(inv);
 			leq = lin;
@@ -71,17 +71,17 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<Linear*>>
 	}
 
 	if (cc > 1) {
-		for (auto eq: vec) {
-			if (eq != leq) {
-				Linear tmp = *leq;
-				tmp.mul(eq->get_var('T', idx));
-				eq->sub(tmp);
-				eq->assign_temp_vars(*leq, index);
+		for (auto i: vec) {
+			if (i != leq) {
+				Linear tmp = eqs[leq];
+				tmp.mul(eqs[i].get_var('T', idx));
+				eqs[i].sub(tmp);
+				eqs[i].assign_temp_vars(eqs[leq], index, i);
 			}
 		}
 	}
 	if (eliminate and cc > 0) {
-		leq->eliminated = true;
+		eqs[leq].eliminated = true;
 	}
 	index.erase(idx);
 //	cout << "finished pivoting" << endl;
@@ -131,10 +131,10 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<Linear*>>
 	}
 }*/
 
-map<int, vector<Linear*>> index_temp_vars(vector<Linear>& eqs) {
-	map<int, vector<Linear*>> temp_index;
+map<int, vector<int>> index_temp_vars(vector<Linear>& eqs) {
+	map<int, vector<int>> temp_index;
 	for (int i = 0; i < eqs.size(); i++) {
-		eqs[i].index_temp_vars(temp_index);
+		eqs[i].index_temp_vars(temp_index, i);
 	}
 	return temp_index;
 }
@@ -148,7 +148,7 @@ void delete_eliminated_eqs(vector<Linear>& eqs) {
 }
 
 void eliminate_temps(vector<Linear>& eqs, struct counts& cnts) {
-	map<int, vector<Linear*>> index = index_temp_vars(eqs);
+	map<int, vector<int>> index = index_temp_vars(eqs);
 	int loop_count = 0;
 	while (!index.empty()) {
 		cout << "loop: " << loop_count << endl;

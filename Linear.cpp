@@ -42,12 +42,12 @@
 		mul(v);
 	}
 
-	void Linear::index_temp_vars(map<int, vector<Linear*>>& index) {
-		vars.index_temp_vars(index, *this);
+	void Linear::index_temp_vars(map<int, vector<int>>& index, int idx) {
+		vars.index_temp_vars(index, idx, *this);
 	}
 
-	void Linear::assign_temp_vars(Linear& other, map<int, vector<Linear*>>& index) {
-		other.vars.index_temp_vars(index, *this, true);
+	void Linear::assign_temp_vars(Linear& other, map<int, vector<int>>& index, int idx) {
+		other.vars.index_temp_vars(index, idx, *this, true);
 	}
 
 	void Linear::to_str() {

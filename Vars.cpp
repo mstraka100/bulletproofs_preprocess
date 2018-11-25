@@ -41,18 +41,18 @@ mpz_class Vars::get_var(char type, int idx) {
 	return var_map[key];
 }
 
-void Vars::index_temp_vars(map<int, vector<Linear*>>& index, Linear& eq, bool check_dups /* = false */) {
+void Vars::index_temp_vars(map<int, vector<int>>& index, int i, Linear& eq, bool check_dups /* = false */) {
 	reduce();
 	for (auto const&x : var_map) {
 		if (var_type(x.first) == 'T') {
 			int idx = var_idx(x.first);
 			if (check_dups && eq.has_var('T', idx))
 				continue;
-			cout << "indexing: T" << idx << " at: " << &eq << endl;
+			cout << "indexing: T" << idx << " at: " << i << endl;
 			if (index.count(idx) == 0)
-				index[idx] = {&eq};
+				index[idx] = {i};
 			else 
-				index[idx].push_back(&eq);
+				index[idx].push_back(i);
 		}
 	}
 }

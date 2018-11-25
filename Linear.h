@@ -31,9 +31,9 @@ public:
 
 	void div(mpz_class v);
 
-	void index_temp_vars(map<int, vector<Linear*>>& index);
+	void index_temp_vars(map<int, vector<int>>& index, int idx);
 
-	void assign_temp_vars(Linear& other, map<int, vector<Linear*>>& index);
+	void assign_temp_vars(Linear& other, map<int, vector<int>>& index, int idx);
 
 	void to_str();
 
