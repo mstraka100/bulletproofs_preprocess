@@ -4,6 +4,8 @@
 #include <map>
 #include <gmpxx.h>
 
+class Linear;
+
 class Vars {
 
 private:
@@ -20,7 +22,7 @@ public:
 
 	mpz_class get_var(char type, int idx);
 
-	void index_temp_vars(std::map<int, std::vector<int>>& index, int pos);
+	void index_temp_vars(std::map<int, std::vector<Linear*>>& index, Linear& eq, bool check_dups = false);
 
 	int num_vars();
 

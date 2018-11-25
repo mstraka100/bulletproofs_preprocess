@@ -28,32 +28,42 @@ using namespace std;
 const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/small.assn";
 const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/small.circ";
 
+/* Coefficient of some variable with index of the equation it appears in */
 struct eq_val {
 	unsigned int eq_num;
 	mpz_class val;
 };
 
-void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& index, vector<int>& to_eliminate, bool eliminate = false) {
+/* Given int idx, eliminates the variable of the form T<idx> from eqs. Marks for future removal by adding to to_eliminate. 
+ * Uses 
+ * TODO: Change index to map to pointers, removes need to to_eliminate vector */
+void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<Linear*>>& index, bool eliminate = false) {
+	if (index.count(idx) == 0)
+		return;
+
+	cout << "starting pivoting idx: " << idx << endl;
 	int c = 0;
 	int cc = 0;
 	int low = -1;
 	int low_idx;
-	Linear leq;
-	vector<int> vec;
-	vector<int> temp_eqs = index[idx];
+	Linear* leq;
+	vector<Linear*> vec;
 
-	map<int, vector<int>> next_index;
-
+	vector<Linear*>& temp_eqs = index[idx];
 	for (int i = 0; i < temp_eqs.size(); i++) {
-		Linear &lin = eqs[temp_eqs[i]];
+		Linear *lin = temp_eqs[i];
 		vec.push_back(temp_eqs[i]);
 		cc += 1;
-		if (low == -1 || c > lin.num_vars()) {
-			low = temp_eqs[i];
+
+	//	cout << "about to check elimination: " << temp_eqs.size() << endl;
+		if (lin->eliminated)
+			continue;
+	//	cout << "checked elimination" << endl;
+		if (low == -1 || c > lin->num_vars()) {
 			low_idx = i;
-			c = lin.num_vars();
-			Linear tmp = lin;
-			mpz_class v = lin.get_var('T', idx);
+			c = lin->num_vars();
+			Linear tmp = *lin;
+			mpz_class v = lin->get_var('T', idx);
 			mpz_class inv = modinv(v, mod);
 			tmp.mul(inv);
 			leq = lin;
@@ -61,23 +71,20 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& in
 	}
 
 	if (cc > 1) {
-		for (auto i: vec) {
-			if (i != low) {
-				// mark for future elimination if more than one temp
-				bool to_index = !eqs[i].has_several_temps();
-				Linear tmp = leq;
-				tmp.mul(eqs[i].get_var('T', idx));
-				eqs[i].sub(tmp);
-				if (to_index) {
-					eqs[i].index_temp_vars(index, i);
-				}
+		for (auto eq: vec) {
+			if (eq != leq) {
+				Linear tmp = *leq;
+				tmp.mul(eq->get_var('T', idx));
+				eq->sub(tmp);
+				eq->assign_temp_vars(*leq, index);
 			}
 		}
 	}
 	if (eliminate and cc > 0) {
-		to_eliminate.push_back(low);
+		leq->eliminated = true;
 	}
 	index.erase(idx);
+//	cout << "finished pivoting" << endl;
 }
 
 /*void pivot_variable(vector<Linear>& eqs_vec, int vnam, bool eliminate = false) {
@@ -124,39 +131,34 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& in
 	}
 }*/
 
-map<int, vector<int>> index_temp_vars(vector<Linear>& eqs) {
-	map<int, vector<int>> temp_index;
+map<int, vector<Linear*>> index_temp_vars(vector<Linear>& eqs) {
+	map<int, vector<Linear*>> temp_index;
 	for (int i = 0; i < eqs.size(); i++) {
-		eqs[i].index_temp_vars(temp_index, i);
+		eqs[i].index_temp_vars(temp_index);
 	}
 	return temp_index;
 }
 
-vector<Linear> eliminate_indices(vector<Linear> vec, vector<int> to_eliminate) {
-	sort(to_eliminate.begin(), to_eliminate.end());
-	int j = 0;
-	vector<Linear> result;
-	for (int i = 0; i < vec.size(); i++) {
-		if (to_eliminate[j] == i) {
-			j += 1;
-			continue;
+void delete_eliminated_eqs(vector<Linear>& eqs) {
+	for (int i = eqs.size()-1; i >= 0; i--) {
+		if (eqs[i].eliminated) {
+			eqs.erase(eqs.begin() + i);
 		}
-		result.push_back(vec[i]);
 	}
-	return result;
 }
 
 void eliminate_temps(vector<Linear>& eqs, struct counts& cnts) {
-	map<int, vector<int>> index = index_temp_vars(eqs);
+	map<int, vector<Linear*>> index = index_temp_vars(eqs);
+	int loop_count = 0;
 	while (!index.empty()) {
-		vector<int> to_eliminate;
+		cout << "loop: " << loop_count << endl;
 		for (int i = 0; i < cnts.temp_count; i++) {
 			if (i % 250 == 0)
 				cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
-			pivot_variable_temp(eqs, i, index, to_eliminate, true);
+			pivot_variable_temp(eqs, i, index, true);
 		}
-		sort(to_eliminate.begin(), to_eliminate.end(), greater<int>());
-		eqs = eliminate_indices(eqs, to_eliminate);
+		delete_eliminated_eqs(eqs);
+		loop_count += 1;
 	}
 }
 
@@ -243,9 +245,11 @@ string hex_word(mpz_class val) {
 
 vector<char> encode_scalar_to_hex(mpz_class val) {
 	vector<char> result;
-	if (val < 0) {
-		cout << "encountered negative value when writing data" << endl;
+	int neg_count = 0;
+	while (val < 0) {
+		cout << "encountered negative value when writing data: " << neg_count << endl;
 		val = mod + val;
+		neg_count += 1;
 	}
 
 	size_t prefix;
@@ -366,8 +370,6 @@ void write_circuit_data(string filename, vector<Linear>& eqs, struct counts& cnt
 			} else if (type == 'O') {
 				WO[idx].push_back(ev);
 			} else {
-				cout << "index: " + to_string(i) << endl;
-				cout << "type " + to_string(type) + "encountered" << endl;
 			//	eqs[i].to_str();
 				throw invalid_argument("unknown type encountered in writing circuit data");
 			}
@@ -404,7 +406,7 @@ int main() {
 	std::chrono::duration<double> elapsed = finish - start;
 	cout << endl << "Time to parse input: " << elapsed.count() << endl;
 
-//	print_andytoshi_format(cnts);
+	print_andytoshi_format(eqs, cnts);
 	
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", cnts.mul_count, cnts.temp_count, eqs.size(), eqs_cost(eqs));
 
@@ -415,7 +417,7 @@ int main() {
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
 
 
-	//print_andytoshi_format(cnts);
+	print_andytoshi_format(eqs, cnts);
 
 /*	start = chrono::high_resolution_clock::now();
 	reduce_eqs(mul_count);

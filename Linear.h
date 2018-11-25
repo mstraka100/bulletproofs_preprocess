@@ -12,7 +12,8 @@ class Linear {
 public:
 	mpz_class real;
 	mpz_class constant;
-	Vars vars; 
+	Vars vars;
+	bool eliminated = false;
 
 	void add_var(char type, int idx, int val);
 
@@ -30,7 +31,9 @@ public:
 
 	void div(mpz_class v);
 
-	void index_temp_vars(map<int, vector<int>>& index, int pos);
+	void index_temp_vars(map<int, vector<Linear*>>& index);
+
+	void assign_temp_vars(Linear& other, map<int, vector<Linear*>>& index);
 
 	void to_str();
 
