@@ -46,9 +46,14 @@ void Vars::index_temp_vars(map<int, vector<int>>& index, int i, Linear& eq, bool
 	for (auto const&x : var_map) {
 		if (var_type(x.first) == 'T') {
 			int idx = var_idx(x.first);
+		//	cout << "considering T" << idx << " for indexing" << endl;
 			if (check_dups && eq.has_var('T', idx))
 				continue;
-			cout << "indexing: T" << idx << " at: " << i << endl;
+		/*	if (idx == 7) {
+				cout << "indexing: T" << idx << " at: " << i << endl;
+				eq.to_str();
+				cout << endl;
+			}*/
 			if (index.count(idx) == 0)
 				index[idx] = {i};
 			else 

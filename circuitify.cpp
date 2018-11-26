@@ -42,11 +42,18 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& in
 		return;
 
 	cout << "starting pivoting idx: " << idx << endl;
+	cout << "26: ";
+	eqs[26].to_str();
+	cout << endl;
+//	cout << "10: ";
+//	eqs[10].to_str();
+//	cout << endl;
 	int c = 0;
 	int cc = 0;
 	int low = -1;
 	int low_idx;
 	int leq;
+	Linear leq_lin;
 	vector<int> vec;
 
 	vector<int>& temp_eqs = index[idx];
@@ -58,14 +65,16 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& in
 	//	cout << "about to check elimination: " << temp_eqs.size() << endl;
 		if (eqs[lin].eliminated)
 			continue;
+		if (!eqs[lin].has_var('T', idx))
+			continue;
 	//	cout << "checked elimination" << endl;
 		if (low == -1 || c > eqs[lin].num_vars()) {
 			low_idx = i;
 			c = eqs[lin].num_vars();
-			Linear tmp = eqs[lin];
+			leq_lin = eqs[lin];
 			mpz_class v = eqs[lin].get_var('T', idx);
 			mpz_class inv = modinv(v, mod);
-			tmp.mul(inv);
+			leq_lin.mul(inv);
 			leq = lin;
 		}
 	}
@@ -73,14 +82,49 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& in
 	if (cc > 1) {
 		for (auto i: vec) {
 			if (i != leq) {
-				Linear tmp = eqs[leq];
+				if (!eqs[i].has_var('T', idx)) {
+					continue;
+				}
+				cout << "modifying eq " << i << endl;
+				eqs[i].assign_temp_vars(leq_lin, index, i);
+				Linear tmp = leq_lin;
+			//	cout << "multiplying by " << eqs[i].get_var('T', idx) << endl;
 				tmp.mul(eqs[i].get_var('T', idx));
+			/*	if (i == 25) {
+					cout << "eq 25 before subtraction: " << endl;
+					eqs[i].to_str();
+					cout << endl;
+					cout << "to subtract: " << endl;
+					eqs[leq].to_str();
+					cout << endl;
+					mpz_class T7_25 = eqs[25].get_var('T', 7);
+					cout << "T7 in 25: " << T7_25 << endl;
+					mpz_class T7_10 = tmp.get_var('T', 7);
+					cout << "T7 in 10: " << T7_10 << endl;
+					mpz_class diff = (T7_25 - T7_10) % mod;
+					cout << "diff (T7_25-T7_10): " << diff << endl;
+ 				}*/
 				eqs[i].sub(tmp);
-				eqs[i].assign_temp_vars(eqs[leq], index, i);
+				if (i == 25) {
+					cout << "eq 25 after subtraction: " << endl;
+					eqs[i].to_str();
+					cout << endl;
+				}
+				/*if (i == 25) {
+					cout << "modified eq 25" << endl;
+					eqs[i].to_str();
+					cout << endl;
+				}*/
+				
+			//	cout << "About to assign " << leq << " to " << i << endl;
+				
+				
+			//	cout << "Assigned" << endl;
 			}
 		}
 	}
 	if (eliminate and cc > 0) {
+		cout << "eliminating: " << leq << endl;
 		eqs[leq].eliminated = true;
 	}
 	index.erase(idx);
@@ -147,24 +191,12 @@ void delete_eliminated_eqs(vector<Linear>& eqs) {
 	}
 }
 
-void eliminate_temps(vector<Linear>& eqs, struct counts& cnts) {
-	map<int, vector<int>> index = index_temp_vars(eqs);
-	int loop_count = 0;
-	while (!index.empty()) {
-		cout << "loop: " << loop_count << endl;
-		for (int i = 0; i < cnts.temp_count; i++) {
-			if (i % 250 == 0)
-				cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
-			pivot_variable_temp(eqs, i, index, true);
-		}
-		delete_eliminated_eqs(eqs);
-		loop_count += 1;
-	}
-}
-
 void print_andytoshi_format(vector<Linear>& eqs, struct counts& cnts) {
 	printf("%d,0,%d,%lu; ", cnts.mul_count, cnts.bit_count, eqs.size());
 	for (int i = 0; i < eqs.size(); i++) {
+		if (eqs[i].eliminated)
+			continue;
+		cout << i << ": ";
 		int pos = 0;
 		for (auto e: eqs[i].vars.var_map) {
 			int key = e.first;
@@ -196,6 +228,24 @@ void print_andytoshi_format(vector<Linear>& eqs, struct counts& cnts) {
 	}
 	cout << endl;
 }
+
+void eliminate_temps(vector<Linear>& eqs, struct counts& cnts) {
+	map<int, vector<int>> index = index_temp_vars(eqs);
+	int loop_count = 0;
+	//while (!index.empty()) {
+		cout << "loop: " << loop_count << endl;
+		for (int i = 0; i < cnts.temp_count; i++) {
+			if (i % 250 == 0)
+				cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
+			pivot_variable_temp(eqs, i, index, true);
+		}
+		cout << "about to deelte" << endl;
+		delete_eliminated_eqs(eqs);
+		loop_count += 1;
+	//}
+}
+
+
 
 int eqs_cost(vector<Linear>& eqs_vec) {
 	int cost = 0;
@@ -370,7 +420,6 @@ void write_circuit_data(string filename, vector<Linear>& eqs, struct counts& cnt
 			} else if (type == 'O') {
 				WO[idx].push_back(ev);
 			} else {
-			//	eqs[i].to_str();
 				throw invalid_argument("unknown type encountered in writing circuit data");
 			}
 		}
@@ -424,7 +473,7 @@ int main() {
 	finish = chrono::high_resolution_clock::now();
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
 */
-//	print_andytoshi_format(cnts);
+//	print_andytoshi_format(eqs, cnts);
 
 	write_secret_data(SECRET_FILENAME, mul_data, cnts);
 	write_circuit_data(CIRCUIT_FILENAME, eqs, cnts);
