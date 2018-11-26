@@ -25,8 +25,8 @@
 #include "parsing.h"
 using namespace std;
 
-const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/small.assn";
-const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-mw/src/modules/bulletproofs/bin_circuits/small.circ";
+const string SECRET_FILENAME = "/CircuitOutput/filename.assn";
+const string CIRCUIT_FILENAME = "/CircuitOutput/filename.circ";
 
 /* Coefficient of some variable with index of the equation it appears in */
 struct eq_val {
@@ -34,20 +34,11 @@ struct eq_val {
 	mpz_class val;
 };
 
-/* Given int idx, eliminates the variable of the form T<idx> from eqs. Marks for future removal by adding to to_eliminate. 
- * Uses 
- * TODO: Change index to map to pointers, removes need to to_eliminate vector */
+/* Given int idx, eliminates the variable of the form T<idx> from eqs. Marks for future removal by adding to to_eliminate. */
 void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& index, bool eliminate = false) {
 	if (index.count(idx) == 0)
 		return;
 
-	cout << "starting pivoting idx: " << idx << endl;
-	cout << "26: ";
-	eqs[26].to_str();
-	cout << endl;
-//	cout << "10: ";
-//	eqs[10].to_str();
-//	cout << endl;
 	int c = 0;
 	int cc = 0;
 	int low = -1;
@@ -56,79 +47,45 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& in
 	Linear leq_lin;
 	vector<int> vec;
 
+	cout << "pivoting idx: " << idx << endl;
+
 	vector<int>& temp_eqs = index[idx];
 	for (int i = 0; i < temp_eqs.size(); i++) {
 		int lin = temp_eqs[i];
-		vec.push_back(temp_eqs[i]);
 		cc += 1;
-
-	//	cout << "about to check elimination: " << temp_eqs.size() << endl;
 		if (eqs[lin].eliminated)
 			continue;
 		if (!eqs[lin].has_var('T', idx))
 			continue;
-	//	cout << "checked elimination" << endl;
 		if (low == -1 || c > eqs[lin].num_vars()) {
 			low_idx = i;
 			c = eqs[lin].num_vars();
-			leq_lin = eqs[lin];
-			mpz_class v = eqs[lin].get_var('T', idx);
-			mpz_class inv = modinv(v, mod);
-			leq_lin.mul(inv);
 			leq = lin;
 		}
 	}
 
 	if (cc > 1) {
-		for (auto i: vec) {
+		leq_lin = eqs[leq];
+		mpz_class v = eqs[leq].get_var('T', idx);
+		mpz_class inv = modinv(v, mod);
+		leq_lin.mul(inv);
+		// TODO: Parallelize this loop
+		for (auto i: temp_eqs) {
 			if (i != leq) {
 				if (!eqs[i].has_var('T', idx)) {
 					continue;
 				}
-				cout << "modifying eq " << i << endl;
 				eqs[i].assign_temp_vars(leq_lin, index, i);
 				Linear tmp = leq_lin;
-			//	cout << "multiplying by " << eqs[i].get_var('T', idx) << endl;
 				tmp.mul(eqs[i].get_var('T', idx));
-			/*	if (i == 25) {
-					cout << "eq 25 before subtraction: " << endl;
-					eqs[i].to_str();
-					cout << endl;
-					cout << "to subtract: " << endl;
-					eqs[leq].to_str();
-					cout << endl;
-					mpz_class T7_25 = eqs[25].get_var('T', 7);
-					cout << "T7 in 25: " << T7_25 << endl;
-					mpz_class T7_10 = tmp.get_var('T', 7);
-					cout << "T7 in 10: " << T7_10 << endl;
-					mpz_class diff = (T7_25 - T7_10) % mod;
-					cout << "diff (T7_25-T7_10): " << diff << endl;
- 				}*/
 				eqs[i].sub(tmp);
-				if (i == 25) {
-					cout << "eq 25 after subtraction: " << endl;
-					eqs[i].to_str();
-					cout << endl;
-				}
-				/*if (i == 25) {
-					cout << "modified eq 25" << endl;
-					eqs[i].to_str();
-					cout << endl;
-				}*/
-				
-			//	cout << "About to assign " << leq << " to " << i << endl;
-				
-				
-			//	cout << "Assigned" << endl;
 			}
 		}
 	}
 	if (eliminate and cc > 0) {
-		cout << "eliminating: " << leq << endl;
 		eqs[leq].eliminated = true;
 	}
 	index.erase(idx);
-//	cout << "finished pivoting" << endl;
 }
 
 /*void pivot_variable(vector<Linear>& eqs_vec, int vnam, bool eliminate = false) {
@@ -196,7 +153,7 @@ void print_andytoshi_format(vector<Linear>& eqs, struct counts& cnts) {
 	for (int i = 0; i < eqs.size(); i++) {
 		if (eqs[i].eliminated)
 			continue;
-		cout << i << ": ";
+	//	cout << i << ": ";
 		int pos = 0;
 		for (auto e: eqs[i].vars.var_map) {
 			int key = e.first;
@@ -231,18 +188,12 @@ void print_andytoshi_format(vector<Linear>& eqs, struct counts& cnts) {
 
 void eliminate_temps(vector<Linear>& eqs, struct counts& cnts) {
 	map<int, vector<int>> index = index_temp_vars(eqs);
-	int loop_count = 0;
-	//while (!index.empty()) {
-		cout << "loop: " << loop_count << endl;
-		for (int i = 0; i < cnts.temp_count; i++) {
-			if (i % 250 == 0)
-				cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
-			pivot_variable_temp(eqs, i, index, true);
-		}
-		cout << "about to deelte" << endl;
-		delete_eliminated_eqs(eqs);
-		loop_count += 1;
-	//}
+	for (int i = 0; i < cnts.temp_count; i++) {
+		if (i % 250 == 0)
+			cout << "temp_eliminated: " << i << "/" << cnts.temp_count << endl;
+		pivot_variable_temp(eqs, i, index, true);
+	}
+	delete_eliminated_eqs(eqs);
 }
 
 
@@ -255,7 +206,6 @@ int eqs_cost(vector<Linear>& eqs_vec) {
 	return cost;
 }
 
-//TODO: fix
 /*void reduce_eqs(int iter, struct counts& cnts) {
 	auto start = chrono::high_resolution_clock::now();
 	int cost = eqs_cost(eqs);
@@ -316,7 +266,6 @@ vector<char> encode_scalar_to_hex(mpz_class val) {
 		val = val >> 8;
 		count += 1;
 	}
-	//string result = oss.str();
 	prefix = prefix | count;
 	result.insert(result.begin(), prefix);
 
@@ -343,8 +292,8 @@ void write_enc_to(T val, size_t width, ofstream& f) {
 void write_secret_data(string filename, vector<struct mul>& mul_data, struct counts& cnts) {
 	ofstream f;
 	f.open(filename);
-	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates
 
+	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates
 	write_enc_to<uint16_t>(1, 4, f);
 	write_enc_to<uint16_t>(0, 4, f);
 	write_enc_to<uint64_t>(cnts.mul_count, 8, f);
@@ -358,7 +307,6 @@ void write_secret_data(string filename, vector<struct mul>& mul_data, struct cou
 	for (int i = 0; i < mul_data.size(); i++) {
 		write_mpz_enc(mul_data[i].o, f);
 	}
-
 	f.close();
 }
 
@@ -388,8 +336,8 @@ void write_circuit_data(string filename, vector<Linear>& eqs, struct counts& cnt
 	f.open(filename);
 	size_t metadata_len = encoding_length(eqs.size());
 	unsigned int next_mul_count = next_power_of_two(cnts.mul_count);
-	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates, 8 bytes n_bits, 8 bytes n_constraints
 
+	// 2 bytes version (1), 2 bytes flags (0), 4 bytes n_commits (0), 8 bytes n_gates, 8 bytes n_bits, 8 bytes n_constraints
 	write_enc_to<uint16_t>(1, 4, f);
 	write_enc_to<uint16_t>(0, 4, f);
 
@@ -465,15 +413,13 @@ int main() {
 	elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
 
-
 	print_andytoshi_format(eqs, cnts);
 
 /*	start = chrono::high_resolution_clock::now();
 	reduce_eqs(mul_count);
 	finish = chrono::high_resolution_clock::now();
 	printf("%d multiplications, %d temporaries, %lu constraints, %d cost\n", mul_count, temp_count, eqs.size(), eqs_cost(eqs));
-*/
-//	print_andytoshi_format(eqs, cnts);
+	print_andytoshi_format(eqs, cnts); */
 
 	write_secret_data(SECRET_FILENAME, mul_data, cnts);
 	write_circuit_data(CIRCUIT_FILENAME, eqs, cnts);

@@ -247,7 +247,6 @@ void parse_statement(vector<Linear>& eqs, string& s, struct counts& cnts, vector
 			Linear r = parse_expression(right, cnts, eqs, mul_data);
 			l.sub(r);
 			cout << "checking equality: " << endl;
-		//	cout << l.real << "==" << r.real << endl;
 			//TODO: check l.val == r.val
 			eqs.push_back(l);
 			l.to_str();
