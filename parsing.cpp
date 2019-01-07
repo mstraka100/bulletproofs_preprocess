@@ -221,23 +221,24 @@ void parse_statement(vector<Linear>& eqs, string& s, struct counts& cnts, vector
 			for (int i = 0; i < bits.size(); i++) {
 				//TODO: Assert bit either 0 or 1
 				real = real + bits[i].real * (1 << i);
-				if (all_const(bits)) {
-					Linear val;
-					new_const(real, val);
-					varset[left] = val;
-				} else {
-					Linear val;
-					new_temp(real, val, cnts);
-					varset[left] = val;
-					for (int i = 0; i < bits.size(); i++) {
-						Linear tmp = bits[i];
-						mpz_class shifted_i = shift_left(1, i);
-						tmp.mul(shifted_i);
-						val.sub(tmp);
-					}
-					eqs.push_back(val);
-				}
 			}
+			if (all_const(bits)) {
+				Linear val;
+				new_const(real, val);
+				varset[left] = val;
+			} else {
+				Linear val;
+				new_temp(real, val, cnts);
+				varset[left] = val;
+				for (int i = 0; i < bits.size(); i++) {
+					Linear tmp = bits[i];
+					mpz_class shifted_i = shift_left(1, i);
+					tmp.mul(shifted_i);
+					val.sub(tmp);
+				}
+				eqs.push_back(val);
+			}
+			
 		} else if (op == "=") {
 			//TODO: check left is proper variable name
 			Linear ex = parse_expression(right, cnts, eqs, mul_data);

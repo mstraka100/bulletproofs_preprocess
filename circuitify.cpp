@@ -17,8 +17,8 @@
 #include "parsing.h"
 using namespace std;
 
-const string SECRET_FILENAME = "/CircuitOutput/filename.assn";
-const string CIRCUIT_FILENAME = "/CircuitOutput/filename.circ";
+const string SECRET_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-fork/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA256cpp.assn";
+const string CIRCUIT_FILENAME = "/Users/michaelstraka/bulletproofs_research/secp256k1-fork/secp256k1-mw/src/modules/bulletproofs/bin_circuits/SHA256cpp.circ";
 
 /* Coefficient of some variable with index of the equation it appears in */
 struct eq_val {
@@ -39,7 +39,7 @@ void pivot_variable_temp(vector<Linear>& eqs, int idx, map<int, vector<int>>& in
 	Linear leq_lin;
 	vector<int> vec;
 
-	cout << "pivoting idx: " << idx << endl;
+//	cout << "pivoting idx: " << idx << endl;
 
 	vector<int>& temp_eqs = index[idx];
 	for (int i = 0; i < temp_eqs.size(); i++) {
@@ -388,7 +388,7 @@ int main() {
 	string input_line;
 	auto start = chrono::high_resolution_clock::now();
 	while (getline(cin, input_line)) {
-		cout << "input line: " << input_line << endl;
+		//cout << "input line: " << input_line << endl;
 		parse_statement(eqs, input_line, cnts, mul_data);
 	}
 	auto finish = chrono::high_resolution_clock::now();
@@ -405,7 +405,7 @@ int main() {
 	elapsed = finish - start;
 	cout << "Time to eliminate vars: " << elapsed.count() << endl;
 
-	print_andytoshi_format(eqs, cnts);
+//	print_andytoshi_format(eqs, cnts);
 
 /*	start = chrono::high_resolution_clock::now();
 	reduce_eqs(mul_count);
